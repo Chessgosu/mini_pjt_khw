@@ -87,6 +87,7 @@ mini-pjt_KHW/
 │   ├── agent.py        # 메인 에이전트 그래프 (LangGraph: 확인 그래프 + 채팅 그래프)
 │   ├── models.py       # 공통 자료형·오류 코드 (Code, Scope, Finding)
 │   ├── parsing.py      # 입력 MD 3종 파싱, 규칙 문자열 나누기
+│   ├── engine.py       # 계산 엔진 (날짜는 여기서만 계산)
 │   ├── tools.py        # 도메인 도구 (계산 엔진, 일정 조회, xlsx 가드레일·판정을 에이전트 도구로 노출)
 │   ├── retriever.py    # RAG 파이프라인 (business-explanation.md 하이브리드 검색)
 │   └── app.py          # Streamlit 화면
