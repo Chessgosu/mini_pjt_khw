@@ -6,19 +6,19 @@
 
 ## 체크리스트
 
-- [ ] 파일 이름 `BATCH_SCHEDULE_YYYYMM.xlsx` 검사, 존재할 수 없는 연월 검사
-- [ ] 실제 xlsx(zip) 여부 검사 (확장자만 바꾼 파일 차단)
-- [ ] `UNSAFE_CONTENT`: 매크로(`vbaProject.bin`), 외부 데이터 연결, OLE·포함 개체, 수식
-- [ ] 레이아웃: 첫 시트, 1행 헤더 `JOB ID`·1~말일, 셀은 대문자 `O` 또는 빈칸
-- [ ] `EMPTY_JOB_ID`, `DUPLICATE_JOB_ID`, `FILE_TOO_LARGE`(10MB, 1,000행)
-- [ ] 형식 오류는 "잘못된 파일입니다" + 사유 코드 전부 반환, 판정하지 않음
-- [ ] 판정: 정상 / 누락 / 초과, 규칙에만 있는 JOB은 전부 누락, 파일에만 있는 JOB은 제외·경고
-- [ ] 검증 연월은 파일 이름 기준
-- [ ] 셀 내용을 AI에 보내지 않고, 업로드로 `data/`가 바뀌지 않음
+- [x] 파일 이름 `BATCH_SCHEDULE_YYYYMM.xlsx` 검사, 존재할 수 없는 연월 검사
+- [x] 실제 xlsx(zip) 여부 검사 (확장자만 바꾼 파일 차단)
+- [x] `UNSAFE_CONTENT`: 매크로(`vbaProject.bin`), 외부 데이터 연결, OLE·포함 개체, 수식
+- [x] 레이아웃: 첫 시트, 1행 헤더 `JOB ID`·1~말일, 셀은 대문자 `O` 또는 빈칸
+- [x] `EMPTY_JOB_ID`, `DUPLICATE_JOB_ID`, `FILE_TOO_LARGE`(10MB, 1,000행)
+- [x] 형식 오류는 "잘못된 파일입니다" + 사유 코드 전부 반환, 판정하지 않음
+- [x] 판정: 정상 / 누락 / 초과, 규칙에만 있는 JOB은 전부 누락, 파일에만 있는 JOB은 제외·경고
+- [x] 검증 연월은 파일 이름 기준
+- [x] 셀 내용을 AI에 보내지 않고, 업로드로 `data/`가 바뀌지 않음
 
 ## 만들 파일
 
-- `src/tools.py` (xlsx 검증)
+- `src/verify.py` (xlsx 유효성 검사·판정; 08단계에서 `tools.py`의 `verify_registration_file` 도구가 이 모듈을 감쌈)
 - `tests/test_file_safety.py`
 - `tests/test_verify.py`
 - `tests/test_guardrails.py`
