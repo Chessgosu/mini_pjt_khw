@@ -106,3 +106,36 @@ def test_judge_with_votes(fake_llm) -> None:
     assert votes == [False, False] and not judge_check(j)[0]                      # 2표 실패면 바로 실패
     fake_llm.set("eval_judge", good)
     assert judge_with_votes(client, {"x": 1})[1] == [True]                        # 첫 판정 통과면 한 번만
+
+def test_ragas_references_cover_context_cases() -> None:
+    """모범 답안은 근거가 있는 10건(#1~8, #14, #17)에 하나씩, 정답 값(날짜·JOB ID)을 담는다."""
+    from evaluation.run_eval import load_references
+    refs = load_references()
+    assert sorted(refs, key=int) == ["1", "2", "3", "4", "5", "6", "7", "8", "14", "17"]
+    for cid, ref in refs.items():
+        for tok in required_tokens(CASES[cid]["expected_traits"]):
+            if tok[0].isdigit() or tok[0] in "ABCDEF":            # 날짜·JOB ID
+                assert tok in ref, (cid, tok)
+
+
+def test_build_ragas_rows_prefers_reference(tmp_path) -> None:
+    from evaluation.run_eval import build_ragas_rows
+    r1 = CaseResult("2", "positive", "q", "a", [], [], [{"doc_id": "x", "text": "ctx"}])
+    r2 = CaseResult("3", "positive", "q", "a", [], [], [{"doc_id": "y", "text": "ctx"}])
+    r3 = CaseResult("10", "negative", "q", "범위 밖", [], [], [])               # 근거 없음 → 제외
+    rows = build_ragas_rows([r1, r2, r3], list(CASES.values()), {"2": "모범 답안"})
+    assert [r["id"] for r in rows] == ["2", "3"]
+    assert rows[0]["reference"] == "모범 답안" and rows[0]["reference_source"] == "ragas_references.csv"
+    assert rows[1]["reference"] == CASES["3"]["expected_traits"] and rows[1]["reference_source"] == "expected_traits"
+
+def test_invalid_run_detection() -> None:
+    """Bedrock 호출 실패(한도 초과)로 답이나 판정을 못 받은 케이스가 있으면 그 회차는 무효."""
+    from evaluation.run_eval import AI_FAILED, invalid_cases
+    ok = CaseResult("1", "positive", "q", "정상 답", [], [], [])
+    ok.checks = {"judge": {"failed": []}}
+    no_answer = CaseResult("2", "positive", "q", AI_FAILED, [], [], [])
+    no_answer.checks = {"judge": {"failed": []}}
+    no_judge = CaseResult("3", "positive", "q", "정상 답", [], [], [])
+    no_judge.checks = {"judge": {"failed": ["AI 판정 실패"]}}
+    assert invalid_cases([ok]) == []
+    assert invalid_cases([ok, no_answer, no_judge]) == ["2", "3"]

@@ -31,10 +31,11 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.chat import (  # noqa: E402
-    ACTION_REFUSED, DATA_CHANGE_REFUSED, OUT_OF_SCOPE, PII_REFUSED, TOO_LONG, RATE_LIMITED_MSG,
+    ACTION_REFUSED, AI_FAILED, DATA_CHANGE_REFUSED, OUT_OF_SCOPE, PII_REFUSED, TOO_LONG, RATE_LIMITED_MSG,
 )
 
 CASES = ROOT / "evaluation" / "test_queries.csv"
+REFERENCES = ROOT / "evaluation" / "ragas_references.csv"     # RAGAS reference(모범 답안), 근거가 있는 케이스만
 SELECTED_MONTH = "2026-11"
 FIXED_ANSWERS = (OUT_OF_SCOPE, ACTION_REFUSED, DATA_CHANGE_REFUSED, PII_REFUSED, TOO_LONG, RATE_LIMITED_MSG)
 TARGET = {"pass": 18, "guardrail": 3, "faithfulness": 0.8}
@@ -125,6 +126,11 @@ def grade(case: dict, answer: str, codes: list[str], tools: list[str], judgement
             "judge": {"ok": j_ok, "failed": j_bad}, "passed": t_ok and u_ok and j_ok}
 
 
+def invalid_cases(results: list[CaseResult]) -> list[str]:
+    """Bedrock 호출 실패(한도 초과·장애)로 판정할 수 없는 케이스. 하나라도 있으면 그 회차는 무효로 본다."""
+    return [r.id for r in results if r.answer == AI_FAILED or "AI 판정 실패" in r.checks.get("judge", {}).get("failed", [])]
+
+
 def summarize(results: list[CaseResult], ragas: dict | None) -> dict:
     by_cat: dict[str, list[int]] = {}
     for r in results:
@@ -179,8 +185,26 @@ def run_cases(chat, client, cases: list[dict]) -> list[CaseResult]:
     return out
 
 
-def run_ragas(results: list[CaseResult], cases: list[dict]) -> dict:
-    """근거(contexts)가 있는 답변만 RAGAS로 측정. reference는 expected_traits."""
+def load_references(path: Path = REFERENCES) -> dict[str, str]:
+    """RAGAS용 모범 답안 (id → 문장). 파일이 없으면 빈 dict."""
+    if not path.exists():
+        return {}
+    with open(path, encoding="utf-8") as f:
+        return {row["id"]: row["reference"].strip() for row in csv.DictReader(f) if row.get("reference", "").strip()}
+
+
+def build_ragas_rows(results: list[CaseResult], cases: list[dict], references: dict[str, str]) -> list[dict]:
+    """근거(contexts)가 있는 답변만 측정 대상. reference는 모범 답안이 있으면 그것, 없으면 expected_traits."""
+    traits = {c["id"]: c["expected_traits"] for c in cases}
+    return [{"id": r.id, "user_input": r.input, "response": r.answer,
+             "retrieved_contexts": [c["text"] for c in r.contexts],
+             "reference": references.get(r.id) or traits[r.id],
+             "reference_source": "ragas_references.csv" if r.id in references else "expected_traits"}
+            for r in results if r.contexts]
+
+
+def run_ragas(results: list[CaseResult], cases: list[dict], round_no: int | None = None) -> dict:
+    """RAGAS 4개 지표. 측정에 쓴 데이터셋은 evaluation/round{N}_ragas_dataset.json으로 남긴다."""
     import os
     from langchain_aws import BedrockEmbeddings, ChatBedrockConverse
     from ragas import EvaluationDataset, RunConfig, evaluate
@@ -190,9 +214,11 @@ def run_ragas(results: list[CaseResult], cases: list[dict]) -> dict:
     from src.agent import load_settings
 
     s = load_settings()
-    ref = {c["id"]: c["expected_traits"] for c in cases}
-    rows = [{"user_input": r.input, "response": r.answer, "retrieved_contexts": [c["text"] for c in r.contexts],
-             "reference": ref[r.id]} for r in results if r.contexts]
+    full = build_ragas_rows(results, cases, load_references())
+    if round_no is not None:
+        out = ROOT / "evaluation" / f"round{round_no}_ragas_dataset.json"
+        out.write_text(json.dumps(full, ensure_ascii=False, indent=2), encoding="utf-8")
+    rows = [{k: r[k] for k in ("user_input", "response", "retrieved_contexts", "reference")} for r in full]
     llm = LangchainLLMWrapper(ChatBedrockConverse(model=s.model_id, region_name=s.region, max_tokens=4096))
     emb = LangchainEmbeddingsWrapper(BedrockEmbeddings(
         model_id=os.environ.get("BEDROCK_EMBEDDING_MODEL_ID", "amazon.titan-embed-text-v2:0"), region_name=s.region))
@@ -205,6 +231,7 @@ def run_ragas(results: list[CaseResult], cases: list[dict]) -> dict:
         vals = [v for v in df[m].tolist() if v is not None and not (isinstance(v, float) and math.isnan(v))]
         scores[m] = round(sum(vals) / len(vals), 3) if vals else None
     scores["rows"] = len(rows)
+    scores["reference_source"] = sorted({r["reference_source"] for r in full})
     scores["per_case"] = {r["user_input"]: {m: (None if math.isnan(v) else round(float(v), 3))
                                             for m, v in zip(("context_recall", "context_precision", "faithfulness",
                                                              "answer_relevancy"),
@@ -233,7 +260,9 @@ def write_report(round_no: int, results: list[CaseResult], summary: dict, notes:
         lines += [f"| 지표 | 점수 |", "|---|---|"]
         lines += [f"| {m} | {rg.get(m)} |" for m in ("context_recall", "context_precision", "faithfulness",
                                                      "answer_relevancy")]
-        lines += ["", f"- 측정 건수: {rg.get('rows')}건 (정해진 거절·범위 밖 문장처럼 근거가 없는 답변은 제외)"]
+        lines += ["", f"- 측정 건수: {rg.get('rows')}건 (정해진 거절·범위 밖 문장처럼 근거가 없는 답변은 제외)",
+                  f"- reference 출처: {', '.join(rg.get('reference_source') or ['expected_traits'])}",
+                  f"- 측정 데이터셋: `evaluation/round{round_no}_ragas_dataset.json`"]
     else:
         lines += ["- 이번 회차는 RAGAS를 실행하지 않음"]
     lines += ["", "## 케이스별 결과", "", "| # | 분류 | 질문 | 결과 | 답변 | 실패 사유 |", "|---|---|---|---|---|---|"]
@@ -270,10 +299,23 @@ def main(argv: list[str]) -> int:
     if not client.available:
         print("AI 미설정: .env에 Bedrock 자격 증명과 BEDROCK_MODEL_ID가 필요합니다.")
         return 2
+    probe = client.call("chat_conditions", {"question": "B001은 12월에 언제 등록돼?", "year_month": SELECTED_MONTH,
+                                            "history_summary": ""})
+    if not probe.ok:
+        print(f"Bedrock 호출 실패로 평가를 시작하지 않았어요: {probe.call.outcome} {probe.call.errors[-1:]}")
+        print("일일 토큰 한도(ThrottlingException)라면 한도가 풀린 뒤 다시 실행하세요. 보고서는 만들지 않았습니다.")
+        return 3
     cases = load_cases()
     chat = ChatService(prepare_data(), client, embeddings=bedrock_embeddings())
     results = run_cases(chat, client, cases)
-    ragas = None if args.no_ragas else run_ragas(results, cases)
+    if bad := invalid_cases(results):
+        print(f"\nBedrock 호출 실패로 판정할 수 없는 케이스가 있어 이번 회차는 무효예요: {', '.join(bad)}")
+        print("보고서는 만들지 않았습니다. 한도가 풀린 뒤 다시 실행하세요.")
+        return 3
+    ragas = None if args.no_ragas else run_ragas(results, cases, args.round)
+    if ragas is not None and ragas.get("faithfulness") is None:
+        print("\nRAGAS 측정이 모두 실패해(시간 초과·호출 실패) 이번 회차는 무효예요. 보고서는 만들지 않았습니다.")
+        return 3
     summary = summarize(results, ragas)
     notes = args.notes.read_text(encoding="utf-8") if args.notes else ""
     report = write_report(args.round, results, summary, notes)
