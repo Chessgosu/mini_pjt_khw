@@ -6,13 +6,13 @@
 
 ## 체크리스트
 
-- [ ] `evaluation/test_queries.csv` 20건 실행 스크립트 (expected_traits·forbidden·expected_tools 판정)
-- [ ] RAGAS 측정: context_recall, context_precision, faithfulness, answer_relevancy
-- [ ] 1차 평가 → `evaluation/round1_report.md`
-- [ ] 실패 케이스 분석·개선
-- [ ] 2차 평가 → `evaluation/round2_report.md`
-- [ ] `README.md`의 RAGAS 결과, 통과율, 회고, 핵심 코드 위치 기입
-- [ ] 자체 평가는 실제 Bedrock으로 **수동 실행**. 오프라인 테스트는 판정 로직(expected_traits·forbidden·expected_tools)만 가짜 LLM 응답으로 확인
+- [x] `evaluation/test_queries.csv` 20건 실행 스크립트 (expected_traits·forbidden·expected_tools 판정)
+- [x] RAGAS 측정: context_recall, context_precision, faithfulness, answer_relevancy
+- [x] 1차 평가 → `evaluation/round1_report.md`
+- [x] 실패 케이스 분석·개선
+- [x] 2차 평가 → `evaluation/round2_report.md`
+- [x] `README.md`의 RAGAS 결과, 통과율, 회고, 핵심 코드 위치 기입
+- [x] 자체 평가는 실제 Bedrock으로 **수동 실행**. 오프라인 테스트는 판정 로직(expected_traits·forbidden·expected_tools)만 가짜 LLM 응답으로 확인
 
 ## 만들 파일
 
@@ -20,6 +20,11 @@
 - `evaluation/round1_report.md`
 - `evaluation/round2_report.md`
 - `README.md`
+
+## 결과
+
+- 1차 13/20 → 2차 **19/20** (guardrail 3/3), RAGAS faithfulness 0.947 → 성공 기준 충족
+- 판정 로직 오프라인 테스트: `tests/test_evaluation.py` (`verify.py 10`은 이 테스트 후 실제 Bedrock으로 `run_eval.py`를 다시 실행합니다)
 
 ## 관련 인수 조건 (Seed)
 

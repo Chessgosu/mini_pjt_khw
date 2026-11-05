@@ -37,7 +37,7 @@ STAGES: dict[str, dict] = {
            "deps": ["02", "05", "06"]},
     "09": {"name": "Streamlit 화면", "tests": ["tests/test_app_schedule.py", "tests/test_single_source.py"],
            "deps": ["03", "04", "07", "08"]},
-    "10": {"name": "평가·문서", "tests": [], "deps": ["09"], "command": ["evaluation/run_eval.py"]},
+    "10": {"name": "평가·문서", "tests": ["tests/test_evaluation.py"], "deps": ["09"], "command": ["evaluation/run_eval.py"]},
 }
 
 

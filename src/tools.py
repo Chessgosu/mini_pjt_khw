@@ -36,19 +36,36 @@ class ScheduleTools:
         return {"status": "blocked", "codes": sorted({f.code.value for f in result.findings}),
                 "missing_months": sorted({f.missing_month for f in result.findings if f.missing_month})}
 
-    def get_registration_schedule(self, job_id: str, year_month: str) -> dict:
-        inputs, _, result = self._state(year_month)
-        job = inputs.job(job_id)
-        base = {"job_id": job_id, "year_month": year_month, "entries": []}
-        if job is None:
-            return {**base, "status": "not_found"}
-        base.update(job_name=job.name, rule=job.rule, start_time=job.start_time)
+    @staticmethod
+    def resolve_job(inputs, job_id: str | None, job_name: str | None) -> tuple[str | None, dict]:
+        """JOB ID 또는 이름(이름·일부 일치가 하나일 때만)으로 JOB을 찾는다. (job_id, 실패 시 상태)."""
+        if job_id:
+            jid = job_id.strip().upper()
+            return (jid, {}) if inputs.job(jid) else (None, {"status": "not_found", "job_id": jid})
+        name = (job_name or "").strip()
+        hits = [j for j in inputs.jobs if name and (name in j.name or j.name in name)]
+        if len(hits) == 1:
+            return hits[0].job_id, {}
+        if not hits:
+            return None, {"status": "not_found", "job_name": name}
+        return None, {"status": "ambiguous", "job_name": name, "candidates": [j.job_id for j in hits]}
+
+    def get_registration_schedule(self, job_id: str | None, year_month: str, job_name: str | None = None) -> dict:
+        inputs, confirmed, result = self._state(year_month)
+        jid, failed = self.resolve_job(inputs, job_id, job_name)
+        base = {"job_id": jid or job_id, "year_month": year_month, "entries": []}
+        if jid is None:
+            return {**base, **failed}
+        job = inputs.job(jid)
+        base.update(job_id=jid, job_name=job.name, rule=job.rule, start_time=job.start_time)
         if result.blocked:
             return {**base, **self._blocked(result)}
-        if job_id in result.unconfirmed:
-            return {**base, "status": "unconfirmed", "codes": [c.value for c in result.unconfirmed[job_id]]}
+        if jid in result.unconfirmed:
+            return {**base, "status": "unconfirmed", "codes": [c.value for c in result.unconfirmed[jid]]}
+        explain = Explainer(inputs, confirmed)
         entries = [{"registration_date": e.registration_date.isoformat(), "run_date": e.run_date.isoformat(),
-                    "start_time": e.start_time} for e in result.entries if e.job_id == job_id]
+                    "start_time": e.start_time, "basis": explain(jid, e.run_date, year_month)}
+                   for e in result.entries if e.job_id == jid]
         return {**base, "status": "ok", "entries": entries}
 
     def find_jobs_by_date(self, day: str) -> dict:
@@ -58,8 +75,10 @@ class ScheduleTools:
         if result.blocked:
             return {**base, **self._blocked(result)}
         names = {j.job_id: j for j in inputs.jobs}
+        explain = Explainer(inputs, self._state(ym_of(d))[1])
         jobs = [{"job_id": e.job_id, "job_name": names[e.job_id].name, "rule": names[e.job_id].rule,
-                 "run_date": e.run_date.isoformat(), "start_time": e.start_time}
+                 "run_date": e.run_date.isoformat(), "start_time": e.start_time,
+                 "basis": explain(e.job_id, e.run_date, ym_of(d))}
                 for e in result.entries if e.registration_date == d]
         return {**base, "status": "ok", "jobs": jobs, "unconfirmed_jobs": sorted(result.unconfirmed)}
 
@@ -104,14 +123,67 @@ class ScheduleTools:
                 "warnings": [(w.code.value, w.job_id) for w in j.warnings]}
 
 
+WEEKDAYS = "월화수목금토일"
+
+
+def _d(x: date) -> str:
+    return f"{x.isoformat()}({WEEKDAYS[x.weekday()]})"
+
+
+class Explainer:
+    """수행일이 어떤 규칙·기준일에서 나왔는지 설명 (채팅 답변의 근거). 계산은 엔진과 같은 함수를 쓴다."""
+
+    def __init__(self, inputs, confirmed) -> None:
+        from src.engine import known_base_names
+        self.inputs, self.confirmed = inputs, confirmed
+        self.bd = BizDays(inputs.calendar)
+        rules = {}
+        for n, t in confirmed.base_date_rules.items():
+            try:
+                rules[n] = parse_base_date_rule(n, t)
+            except RuleSyntaxError:
+                continue
+        self.base = BaseDates(rules, self.bd)
+        self.known = known_base_names(inputs.jobs, confirmed)
+
+    def __call__(self, job_id: str, run: date, year_month: str) -> list[dict]:
+        from src.engine import STANDARD, base_names_of, classify_rule
+        job = self.inputs.job(job_id)
+        c = classify_rule(job.rule)
+        texts = [job.rule] if c.status == STANDARD else self.confirmed.run_rules.get(job_id, [])
+        out = []
+        for t in texts:
+            cc = classify_rule(t)
+            if cc.status != STANDARD:
+                continue
+            if not cc.parts.d_op:
+                out.append({"rule": t, "text": f"월 기준 규칙 '{t}' → 수행일 {_d(run)}"})
+                continue
+            for name in base_names_of(cc.parts, self.known):
+                for origin in required_months(year_month):
+                    try:
+                        occ = self.base.occurrence(name, origin)
+                        if occ is None or occ.excluded or cc.op.apply(occ.date, self.bd) != run:
+                            continue
+                    except (CalendarMissing, RuleSyntaxError, KeyError):
+                        continue
+                    moved = "" if occ.original == occ.date else " (기준일 규칙에 따라 이동)"
+                    out.append({"rule": t, "base_date": name, "original": occ.original.isoformat(),
+                                "d": occ.date.isoformat(), "base_rule": self.confirmed.base_date_rules.get(name),
+                                "text": f"{name}: 출발 {_d(occ.original)} → 기준일 D {_d(occ.date)}{moved}, "
+                                        f"기준일 규칙 '{self.confirmed.base_date_rules.get(name)}', "
+                                        f"수행일 규칙 '{t}' → 수행일 {_d(run)}"})
+        return out
+
+
 def make_tools(tools: ScheduleTools, retriever=None) -> list[Any]:
     """LangChain 도구 목록 (에이전트·트레이스용)."""
     from langchain_core.tools import tool
 
     @tool("get_registration_schedule")
-    def get_registration_schedule(job_id: str, year_month: str) -> dict:
-        """JOB ID와 연월(YYYY-MM)로 그 달의 계산된 등록일·수행일·시작 시각을 돌려준다."""
-        return tools.get_registration_schedule(job_id, year_month)
+    def get_registration_schedule(year_month: str, job_id: str | None = None, job_name: str | None = None) -> dict:
+        """JOB ID(또는 JOB 이름)와 연월(YYYY-MM)로 그 달의 계산된 등록일·수행일·시작 시각과 근거를 돌려준다."""
+        return tools.get_registration_schedule(job_id, year_month, job_name)
 
     @tool("find_jobs_by_date")
     def find_jobs_by_date(day: str) -> dict:

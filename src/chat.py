@@ -227,24 +227,6 @@ class ChatService:
         extra = f" (없는 달: {', '.join(missing)})" if missing else ""
         return _done(f"{ym} 일정은 계산할 수 없어요: {', '.join(res['codes'])}{extra}", step, ym, res["codes"])
 
-    def _find_job(self, cond: dict) -> tuple[str | None, str | None]:
-        """(job_id, 못 찾았을 때 안내). job_name만 있으면 JOB 이름·설명에서 하나로 좁혀질 때만 쓴다."""
-        jobs = load_inputs(self.data_dir).jobs
-        if cond.get("job_id"):
-            jid = cond["job_id"]
-            if any(j.job_id == jid for j in jobs):
-                return jid, None
-            return None, f"{jid}은(는) 규칙 파일(batch-schedule.md)에 없는 JOB이에요. batch-schedule.md를 확인해 주세요."
-        name = (cond.get("job_name") or "").strip()
-        if not name:
-            return None, None
-        hits = [j for j in jobs if name in j.name or j.name in name]
-        if len(hits) == 1:
-            return hits[0].job_id, None
-        if not hits:
-            return None, f"'{name}'에 해당하는 JOB이 규칙 파일(batch-schedule.md)에 없어요. batch-schedule.md를 확인해 주세요."
-        return None, f"'{name}'에 해당하는 JOB이 여러 개예요({', '.join(j.job_id for j in hits)}). JOB ID로 질문해 주세요."
-
     # ---------- schedule
 
     def schedule(self, state: ChatState) -> dict:
@@ -252,16 +234,19 @@ class ChatService:
         ym, stop = self._target_month(state)
         if stop:
             return stop
-        job_id, not_found = self._find_job(cond)
-        if not_found:
-            return _done(not_found, "schedule", cond)
         day = cond.get("day")
         if day is not None and day > last_day(ym).day:
             return _done(f"{ym}에는 {day}일이 없어요.", "schedule", cond)
 
-        if job_id:
-            res = self._tool("get_registration_schedule", self.tools.get_registration_schedule, job_id, ym)
-            tr = _t("tool:get_registration_schedule", {"job_id": job_id, "year_month": ym}, res)
+        job_id = None
+        if cond.get("job_id") or cond.get("job_name"):
+            args = (cond.get("job_id"), ym, cond.get("job_name"))
+            res = self._tool("get_registration_schedule", self.tools.get_registration_schedule, *args)
+            tr = _t("tool:get_registration_schedule",
+                    {"job_id": args[0], "year_month": ym, "job_name": args[2]}, res)
+            if res["status"] in ("not_found", "ambiguous"):
+                return {**_done(job_lookup_message(res), "schedule", cond), "trace": tr}
+            job_id = res["job_id"]
             if res["status"] == "blocked":
                 return {**self._blocked_answer(ym, res, "schedule"), "trace": tr}
             if res["status"] == "unconfirmed":
@@ -288,8 +273,7 @@ class ChatService:
         else:
             return _done(UNANSWERABLE, "schedule", cond)
 
-        contexts = [{"doc_id": f"schedule#{f['citation'].replace(' ', '#')}",
-                     "text": json.dumps(f, ensure_ascii=False)} for f in facts]
+        contexts = [{"doc_id": f"schedule#{f['citation'].replace(' ', '#')}", "text": fact_text(f)} for f in facts]
         if not facts:
             return {**_done(empty, "schedule", cond), "trace": tr}
         unconfirmed_note = None
@@ -320,7 +304,8 @@ class ChatService:
                 else {"base_dates": [], "note": "질문에 달이 없어 기준일 날짜를 주지 않음"})
         base_facts = [{"citation": f"{b['name']} {b['date']}", **b} for b in base.get("base_dates", [])]
         sections = [{"doc_id": d.doc_id, "text": d.text} for d in docs]
-        contexts = sections + [{"doc_id": f"base_date#{b['name']}#{b['date']}", "text": json.dumps(b, ensure_ascii=False)}
+        contexts = sections + [{"doc_id": f"base_date#{b['name']}#{b['date']}",
+                                "text": f"{b['name']}: {b['date']} (출발 {b['original']}, 기준일 규칙 '{b['rule']}')"}
                                for b in base_facts]
         return {"target_ym": ym, "facts": base_facts, "expected": [], "sections": sections, "base_facts": base_facts,
                 "contexts": contexts, "route": "compose", "trace": tr + _t("tool:base_dates_in_month", ym, base)}
@@ -335,8 +320,7 @@ class ChatService:
             return {"answer": AI_FAILED, "trace": _t("compose", payload, res.call.outcome)}
         ans = res.value
         if state.get("expected"):
-            known = {f[k] for f in state["facts"] for k in ("registration_date", "run_date") if f.get(k)}
-            ok, why = check_schedule_answer(ans.answer, ans.citations, state["expected"], known)
+            ok, why = check_schedule_answer(ans.answer, ans.citations, state["expected"], fact_dates(state["facts"]))
         elif not ans.answerable:
             return {"answer": OUT_OF_SCOPE, "trace": _t("compose", payload, "answerable=false")}
         else:
@@ -345,7 +329,44 @@ class ChatService:
         answer = ans.answer if ok else ANSWER_REJECTED
         if ok and state.get("unconfirmed_note"):
             answer += state["unconfirmed_note"]                    # 코드가 붙이는 안내 (AI 문장과 별개)
+        if ok and state.get("sections"):
+            answer += source_note(ans.citations, state["sections"])
         return {"answer": answer, "trace": tr}
+
+
+def job_lookup_message(res: dict) -> str:
+    if res["status"] == "ambiguous":
+        return (f"'{res['job_name']}'에 해당하는 JOB이 여러 개예요({', '.join(res['candidates'])}). "
+                "JOB ID로 질문해 주세요.")
+    who = res.get("job_id") or f"'{res.get('job_name')}'"
+    return f"{who}에 해당하는 JOB이 규칙 파일(batch-schedule.md)에 없어요. batch-schedule.md를 확인해 주세요."
+
+
+def fact_text(f: dict) -> str:
+    """계산 결과 한 건을 사람이 읽는 문장으로 (contexts용)."""
+    basis = " / ".join(b["text"] for b in f.get("basis") or [])
+    return (f"{f['job_id']} ({f.get('job_name', '')}): 등록일 {f['registration_date']}, "
+            f"수행일 {f.get('run_date')} {f.get('start_time')} 시작, 수행일 규칙 '{f.get('rule', '')}'. "
+            + (f"근거: {basis}. " if basis else "")
+            + "등록일은 시작 시각이 16:30 이후면 수행일 당일, 16:30 이전이면 수행일 전날입니다.")
+
+
+def source_note(citations: list[str], sections: list[dict]) -> str:
+    """업무 답변의 출처 표시 (코드가 붙임): 인용 문장이 들어 있는 업무 설명 절, 없으면 검색 1순위 절."""
+    names = [s["doc_id"].split("#", 1)[1] for s in sections
+             if any(check_evidence(c, [s["text"]]) is None for c in citations)]
+    names = names or [sections[0]["doc_id"].split("#", 1)[1]]
+    return f" (출처: business-explanation.md · {', '.join(f'## {n}' for n in dict.fromkeys(names))})"
+
+
+def fact_dates(facts: list[dict]) -> set[str]:
+    """답변 문장에 써도 되는 날짜: 등록일·수행일과 근거의 출발 날짜·기준일 D."""
+    out = set()
+    for f in facts:
+        out |= {f[k] for k in ("registration_date", "run_date") if f.get(k)}
+        for b in f.get("basis") or []:
+            out |= {b[k] for k in ("original", "d") if b.get(k)}
+    return out
 
 
 # ================================================================ 답변 검증 (코드)

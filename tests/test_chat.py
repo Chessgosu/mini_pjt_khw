@@ -162,3 +162,31 @@ def test_history_summary_passed_to_parser(data_dir: Path, fake_llm) -> None:
         chat.ask("B001은 12월에 언제 등록돼?", SEL)
     last = [p for purpose, p in fake_llm.calls if purpose == "chat_conditions"][-1]
     assert last["history_summary"].count("(이전)") == 1 and last["history_summary"].count("Q: ") == 4
+
+
+# ------------------------------------------------------------ 10단계 개선: 근거(basis)·출처 표시
+
+def test_basis_explains_base_date(data_dir: Path, fake_llm) -> None:
+    from src.tools import ScheduleTools
+    make_chat(data_dir, fake_llm)                                             # 샘플 확정값 저장
+    t = ScheduleTools(data_dir)
+    b001 = t.get_registration_schedule("B001", "2026-12")["entries"][0]["basis"][0]
+    assert (b001["base_date"], b001["original"], b001["d"]) == ("자동이체 5일자 응당일", "2026-12-05", "2026-12-07")
+    assert "2026-12-05(토)" in b001["text"]
+    b006 = t.get_registration_schedule("B006", "2026-11")["entries"][0]["basis"][0]
+    assert (b006["original"], b006["d"]) == ("2026-10-31", "2026-11-02")      # 10월 말일자가 11월로 넘어옴
+    a002 = t.get_registration_schedule(None, "2026-11", "매출")             # 이름으로 찾기: '매출 마감'(A001)만 일치
+    assert a002["status"] == "ok" and a002["job_id"] == "A001"
+
+
+def test_basis_dates_allowed_in_answer(data_dir: Path, fake_llm) -> None:
+    fake_llm.set("chat_answer", {"answer": "B001은 출금일 2026-12-05(토)가 휴일이라 응당일 2026-12-07로 밀려 "
+                                           "전날인 2026-12-06에 등록돼요.", "citations": ["2026-12-06 B001"],
+                                 "answerable": True})
+    r = make_chat(data_dir, fake_llm).ask("B001은 12월에 언제 등록돼?", SEL)
+    assert r["answer"].startswith("B001은 출금일")
+
+
+def test_business_answer_has_source(data_dir: Path, fake_llm) -> None:
+    r = make_chat(data_dir, fake_llm).ask("11월 마감일은 언제야?", SEL)
+    assert r["answer"].endswith("(출처: business-explanation.md · ## 마감)")
