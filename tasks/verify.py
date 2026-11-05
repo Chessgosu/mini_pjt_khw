@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parent.parent  # mini-pjt
 
 # 단계별 검증 대상. 선행 단계는 tasks/README.md의 진행 순서를 따른다.
 STAGES: dict[str, dict] = {
-    "00": {"name": "환경 준비", "tests": [], "deps": []},
+    "00": {"name": "환경 준비", "tests": ["tests/test_environment.py"], "deps": []},
     "01": {"name": "입력 파싱", "tests": ["tests/test_parsing.py"], "deps": ["00"]},
     "02": {"name": "계산 엔진",
            "tests": ["tests/test_engine.py", "tests/test_base_date_rules.py", "tests/test_sample_202611.py"],

@@ -6,20 +6,23 @@
 
 ## 체크리스트
 
-- [ ] `src/`, `tests/`, `evaluation/` 폴더 구성 (develop_standard.md)
-- [ ] `.env.example` 작성 (AWS 리전, 자격 증명, Bedrock 모델 ID, `LANGSMITH_TRACING`, `LANGSMITH_API_KEY`)
-- [ ] `pytest.ini`에 테스트 경로 설정
-- [ ] `tests/conftest.py`: 임시 data 폴더 fixture (실제 `data/confirmed.json`을 건드리지 않음)
-- [ ] `tests/conftest.py`: 가짜 LLM fixture (네트워크 없이 정해진 응답 반환)
-- [ ] `pip install -r requirements.txt` 설치 확인
-- [ ] `tests/conftest.py`: 가짜 시계 fixture (채팅 요청 횟수 제한 60초 창 테스트용)
-- [ ] `tests/fixtures/` 준비: 테스트 전용 달력(2025-10 연휴 10-03~10-09, 2026-09), 가상 업무 "정산", 규칙 칸이 빈 가상 JOB X001
+- [x] `src/`, `tests/`, `evaluation/` 폴더 구성 (develop_standard.md)
+- [x] `.env.example` 작성 (AWS 리전, 자격 증명, Bedrock 모델 ID, `LANGSMITH_TRACING`, `LANGSMITH_API_KEY`)
+- [x] `pytest.ini`에 테스트 경로 설정
+- [x] `tests/conftest.py`: 임시 data 폴더 fixture (실제 `data/confirmed.json`을 건드리지 않음)
+- [x] `tests/conftest.py`: 가짜 LLM fixture (네트워크 없이 정해진 응답 반환)
+- [x] `pip install -r requirements.txt` 설치 확인
+- [x] `tests/conftest.py`: 가짜 시계 fixture (채팅 요청 횟수 제한 60초 창 테스트용)
+- [x] `tests/fixtures/` 준비: 테스트 전용 달력(2025-10 연휴 10-03~10-09, 2026-09), 가상 업무 "정산", 규칙 칸이 빈 가상 JOB X001
 
 ## 만들 파일
 
 - `.env.example`
 - `tests/conftest.py`
 - `pytest.ini`
+- `src/__init__.py`, `tests/__init__.py`
+- `tests/test_environment.py` (fixture 동작 확인 4건)
+- `tests/fixtures/` (README.md, calendar-2025.md, calendar-2026-09-virtual.md, business-explanation-settlement.md, batch-schedule-x001.md)
 
 ## 완료 기준
 
