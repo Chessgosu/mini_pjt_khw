@@ -132,3 +132,15 @@ mini-pjt_KHW/
 
 - **기준일은 달마다 확정하지 않는다.** AI가 업무 설명을 기준일 규칙(출발 날짜 + 휴일 보정 + 겹침 보정)으로 한 번 제안하고, 사용자가 한 번 확정하면 계산 엔진이 매달 날짜를 계산한다. docs/service-spec.md 4.3.
 - **자동이체 응당일 겹침**: 휴일 보정 후 응당일이 겹치면 원래 출금일이 가장 빠른 응당일자만 남기고, 나머지 응당일자를 쓰는 JOB은 그 회차에 등록하지 않는다 (예: 2025-10 5일자·10일자 → 5일자만). docs/service-spec.md 4.3 ④.
+
+## 채팅 진입 함수 (API 확장 대비)
+
+- 채팅 처리는 `src/agent.py`의 함수 `ask(question: str, year_month: str) -> dict` 하나로 묶는다. 반환 형식은 `api_spec.md`와 같게 `{"answer": str, "contexts": [{"doc_id", "text"}], "trace": [{"step", "input", "output"}]}`로 한다.
+- Streamlit 채팅 화면과 평가 스크립트(`evaluation/`)는 모두 이 함수를 부른다. 지금은 API 서버를 만들지 않지만, 나중에 `POST /query`는 이 함수를 감싸기만 하면 되게 한다.
+
+## 실행 환경
+
+- 이 프로젝트는 **Python 3.12 가상환경 `mini-pjt/.venv`** 를 쓴다 (시스템 기본 3.15는 RAG·평가 패키지 호환성 문제로 쓰지 않는다).
+- 설치: `uv venv --python 3.12 .venv` 후 `uv pip install --python .venv/Scripts/python.exe -r requirements.txt`
+- 실행: `.venv\Scripts\python -m pytest -q`, `.venv\Scripts\python tasks/verify.py 02`, `.venv\Scripts\streamlit run src/app.py`
+- `langchain-community`는 0.4 미만으로 고정한다 (ragas 0.4.3 호환).

@@ -11,7 +11,7 @@ openpyxl
 # LLM·에이전트 (Claude on AWS Bedrock)
 langchain
 langchain-aws
-langchain-community
+langchain-community<0.4   # ragas 0.4.3이 0.4.x에서 빠진 모듈(chat_models.vertexai)을 사용
 langgraph
 
 # RAG (하이브리드 검색: BM25 + 벡터)
