@@ -6,17 +6,22 @@
 
 ## 체크리스트
 
-- [ ] `business-explanation.md`를 `##` 절 단위로 분할
-- [ ] BM25 검색 (kiwipiepy 한국어 형태소 분석)
-- [ ] 벡터 검색 (Chroma, Bedrock 임베딩)
-- [ ] 하이브리드 결합 (점수 결합 또는 순위 융합)
-- [ ] 근거 문장 검사: 공백 정규화 후 원문 포함 여부, 없으면 "근거 불일치"
-- [ ] `retrieve_business_docs` 도구로 노출
+- [x] `business-explanation.md`를 `##` 절 단위로 분할
+- [x] BM25 검색 (kiwipiepy 한국어 형태소 분석)
+- [x] 벡터 검색 (Chroma, Bedrock 임베딩)
+- [x] 하이브리드 결합 (BM25·벡터·제목 일치 3가지 순위를 RRF로 융합, 제목 일치 가중치 2)
+- [x] 근거 문장 검사: 공백 정규화 후 원문 포함 여부, 없으면 "근거 불일치"
+- [x] `retrieve_business_docs` 도구로 노출
 
 ## 만들 파일
 
 - `src/retriever.py`
 - `tests/test_retriever.py`
+
+## 참고 사항
+
+- 임베딩(Bedrock)을 쓸 수 없으면 BM25·제목 일치만으로 검색합니다 (`mode == "bm25"`).
+- `retrieve_business_docs` 도구는 `src/retriever.py`의 `make_retrieve_tool`로 만들고, 08단계 `tools.py`에서 다른 도구와 함께 묶습니다.
 
 ## 관련 인수 조건 (Seed)
 

@@ -71,7 +71,7 @@
 |---|---|---|
 | 1 | LCEL + Pydantic 구조화 출력 | 모든 AI 결과(업무 매칭, 기준일, 규칙 정규화, 채팅 조건, 답변+인용 목록)를 Pydantic 모델로 받는다 |
 | 2 | ReAct | 채팅 에이전트가 `bind_tools`로 도구를 골라 쓴다 |
-| 3 | RAG (하이브리드 검색) | `src/retriever.py`: 업무 설명을 `##` 절 단위로 나눠 BM25(kiwipiepy) + Chroma 검색 |
+| 3 | RAG (하이브리드 검색) | `src/retriever.py`: 업무 설명을 `##` 절 단위로 나눠 BM25(kiwipiepy) + Chroma + 제목 일치를 RRF로 결합, 임베딩 불가 시 BM25만 |
 | 4 | 도구 다중 | `get_registration_schedule`, `find_jobs_by_date`, `retrieve_business_docs`, `verify_registration_file` |
 | 6 | 가드레일 | 입력: 프롬프트 인젝션 차단. 출력: 답변 날짜·JOB ID를 정답 목록과 대조 |
 | 7 | HITL | AI 제안 확정을 LangGraph `interrupt()`로 사용자 승인 후 반영 |
