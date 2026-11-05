@@ -6,19 +6,20 @@
 
 ## 체크리스트
 
-- [ ] `batch-schedule.md` 표 파서: JOB ID, JOB 이름, 수행일 규칙, 시작 시각, JOB 설명
-- [ ] `business-explanation.md`: `## 업무명` 절 단위 분리
-- [ ] `business-calendar.md`: `## YYYY-MM` 절과 휴일 목록, 절 존재 여부(입력 완료) 판단
-- [ ] 해시: 공백·줄바꿈 정규화 후 SHA-256 (업무 설명은 절 단위 + `##` 제목 목록, JOB은 행 단위)
-- [ ] `MD_FILE_MISSING`: 필요한 파일 없음·빈 파일·읽기 불가 (`business-explanation.md`는 필요할 때만)
-- [ ] `MD_SYNTAX_ERROR`: 필수 열 없음, JOB ID 중복
-- [ ] `START_TIME_INVALID`: 빈 칸, `24:00`, `9:05` 등
-- [ ] MD 파일은 계산할 때마다 다시 읽기
-- [ ] 규칙 문자열에서 업무 표현·구분·D 연산 분리 (예: `매월 마감일 D+2 영업일` → 업무 표현 "마감일", 연산 `D+2 영업일`)
+- [x] `batch-schedule.md` 표 파서: JOB ID, JOB 이름, 수행일 규칙, 시작 시각, JOB 설명
+- [x] `business-explanation.md`: `## 업무명` 절 단위 분리
+- [x] `business-calendar.md`: `## YYYY-MM` 절과 휴일 목록, 절 존재 여부(입력 완료) 판단
+- [x] 해시: 공백·줄바꿈 정규화 후 SHA-256 (업무 설명은 절 단위 + `##` 제목 목록, JOB은 행 단위)
+- [x] `MD_FILE_MISSING`: 필요한 파일 없음·빈 파일·읽기 불가 (`business-explanation.md`는 필요할 때만)
+- [x] `MD_SYNTAX_ERROR`: 필수 열 없음, JOB ID 중복
+- [x] `START_TIME_INVALID`: 빈 칸, `24:00`, `9:05` 등
+- [x] MD 파일은 계산할 때마다 다시 읽기
+- [x] 규칙 문자열에서 업무 표현·구분·D 연산 분리 (예: `매월 마감일 D+2 영업일` → 업무 표현 "마감일", 연산 `D+2 영업일`)
 
 ## 만들 파일
 
-- `src/tools.py` (파싱 함수)
+- `src/parsing.py` (파싱 함수, 규칙 문자열 나누기)
+- `src/models.py` (오류 코드 22개, 막는 범위, Finding)
 - `tests/test_parsing.py`
 
 ## 관련 인수 조건 (Seed)

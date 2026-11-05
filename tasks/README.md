@@ -31,7 +31,7 @@ python tasks/verify.py all         # 전체
 | 단계 | 폴더 | 완료 기준 (AC) | 상태 |
 |---|---|---|---|
 | 00 · 환경 준비 | [00-environment](00-environment/TASK.md) | - | ✅ |
-| 01 · 입력 파싱 | [01-input-parsing](01-input-parsing/TASK.md) | - | ⬜ |
+| 01 · 입력 파싱 | [01-input-parsing](01-input-parsing/TASK.md) | - | ✅ |
 | 02 · 계산 엔진 ⭐ | [02-calculation-engine](02-calculation-engine/TASK.md) | `ac_engine_correct`, `ac_base_date_rules`, `ac_sample_202611` | ⬜ |
 | 03 · 확정 저장소 | [03-confirmed-store](03-confirmed-store/TASK.md) | `ac_invalidation` | ⬜ |
 | 04 · xlsx 검증 | [04-xlsx-verification](04-xlsx-verification/TASK.md) | `ac_file_safety`, `ac_verdicts`, `ac_guardrail_codes` | ⬜ |
