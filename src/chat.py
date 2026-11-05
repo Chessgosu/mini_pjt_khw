@@ -274,6 +274,8 @@ class ChatService:
             return _done(UNANSWERABLE, "schedule", cond)
 
         contexts = [{"doc_id": f"schedule#{f['citation'].replace(' ', '#')}", "text": fact_text(f)} for f in facts]
+        if facts:
+            contexts.append(REGISTRATION_RULE_DOC)                 # 등록일 규칙은 한 번만
         if not facts:
             return {**_done(empty, "schedule", cond), "trace": tr}
         unconfirmed_note = None
@@ -346,9 +348,11 @@ def fact_text(f: dict) -> str:
     """계산 결과 한 건을 사람이 읽는 문장으로 (contexts용)."""
     basis = " / ".join(b["text"] for b in f.get("basis") or [])
     return (f"{f['job_id']} ({f.get('job_name', '')}): 등록일 {f['registration_date']}, "
-            f"수행일 {f.get('run_date')} {f.get('start_time')} 시작, 수행일 규칙 '{f.get('rule', '')}'. "
-            + (f"근거: {basis}. " if basis else "")
-            + "등록일은 시작 시각이 16:30 이후면 수행일 당일, 16:30 이전이면 수행일 전날입니다.")
+            f"수행일 {f.get('run_date')} {f.get('start_time')} 시작" + (f". 근거: {basis}" if basis else ""))
+
+
+REGISTRATION_RULE_DOC = {"doc_id": "rule#registration",
+                         "text": "등록일 규칙: 시작 시각이 16:30~23:59이면 수행일 당일, 00:00~16:29이면 수행일 전날에 등록합니다."}
 
 
 def source_note(citations: list[str], sections: list[dict]) -> str:

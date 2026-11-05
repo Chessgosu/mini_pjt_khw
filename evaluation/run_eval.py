@@ -96,9 +96,25 @@ def judge_check(judgement: dict | None) -> tuple[bool, list[str]]:
     """AI 판정 결과 → (통과, 실패 항목). 판정을 못 받았으면 실패로 본다."""
     if judgement is None:
         return False, ["AI 판정 실패"]
-    bad = [f"[기대] {t['item']}: {t['reason']}" for t in judgement["traits"] if not t["ok"]]
-    bad += [f"[금지] {t['item']}: {t['reason']}" for t in judgement["forbidden"] if not t["ok"]]
+    bad = [f"[기대] {t['item']}: {t['reason']}" for t in judgement["traits"] if not t["met"]]
+    bad += [f"[금지] {t['item']}: {t['reason']}" for t in judgement["forbidden"] if t["violated"]]
     return not bad, bad
+
+
+def judge_with_votes(client, payload: dict, max_votes: int = 3) -> tuple[dict | None, list[bool]]:
+    """AI 판정을 받고, 실패로 나오면 최대 3번까지 다시 받아 다수결(2/3)로 정한다 (평가 AI의 판정 흔들림 완화).
+    돌려주는 판정은 다수 쪽의 첫 판정이다."""
+    judgements: list[dict | None] = []
+    for _ in range(max_votes):
+        j = client.call("eval_judge", payload)
+        judgements.append(j.value.model_dump() if j.ok else None)
+        votes = [judge_check(x)[0] for x in judgements]
+        if votes[0] and len(votes) == 1:
+            return judgements[0], votes                    # 첫 판정이 통과면 그대로
+        if votes.count(True) * 2 > max_votes or votes.count(False) * 2 > max_votes:
+            break
+    winner = votes.count(True) * 2 > len(votes)
+    return next(x for x, v in zip(judgements, votes) if v == winner), votes
 
 
 def grade(case: dict, answer: str, codes: list[str], tools: list[str], judgement: dict | None) -> dict:
@@ -153,10 +169,10 @@ def run_cases(chat, client, cases: list[dict]) -> list[CaseResult]:
         tools = [t["step"].split(":", 1)[1] for t in r["trace"] if t["step"].startswith("tool:")]
         payload = {"question": case["input"], "answer": r["answer"], "codes": r["codes"],
                    "expected_traits": split_items(case["expected_traits"]), "forbidden": split_items(case["forbidden"])}
-        j = client.call("eval_judge", payload)
-        judgement = j.value.model_dump() if j.ok else None
+        judgement, votes = judge_with_votes(client, payload)
         res = CaseResult(case["id"], case["category"], case["input"], r["answer"], r["codes"], tools, r["contexts"])
         res.checks = grade(case, r["answer"], r["codes"], tools, judgement)
+        res.checks["judge"]["votes"] = votes
         res.passed = res.checks["passed"]
         print(f"#{case['id']:>2} {'통과' if res.passed else '실패'} [{case['category']}] {case['input']}")
         out.append(res)

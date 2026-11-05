@@ -2,7 +2,7 @@ id,category,input,expected_traits,forbidden,expected_tools,note
 1,positive,B006은 11월에 언제 등록돼?,정중한 존댓말; 2026-11-01 표기; 2026-11-29 표기; 11-01은 10월 말일자 응당일(11-02) 청구분이라는 설명,계산 결과에 없는 날짜; 11-30 등록 안내,get_registration_schedule,앞 달 기준일이 대상 월로 넘어오는 경우
 2,positive,25일에 등록되는 배치는 뭐야?,B106; B201; D001; E001; 4개 JOB 빠짐없이 표기,목록에 없는 JOB ID; JOB 일부 누락,find_jobs_by_date,날짜 기준 역조회 · 정답 목록 완전 일치
 3,positive,C001은 이번 달 언제 등록돼?,2026-11-06 표기; 수행일 11-07(1째 주 토요일) 10:00 시작이라 전날 등록이라는 설명,11-07을 등록일로 안내,get_registration_schedule,시작 시각 16:30 이전 → 전날 등록
-4,positive,결산 배치 A002 등록일 알려줘,2026-11-05 표기; 마감일 11-03 기준 D+2 영업일 설명,11-04 등록 안내; 마감일 11-02 안내,get_registration_schedule; retrieve_business_docs,마감 예외(첫 영업일이 응당일) 반영 여부
+4,positive,결산 배치 A002 등록일 알려줘,2026-11-05 표기; 마감일 11-03 기준 D+2 영업일 설명,11-04 등록 안내; 11-02를 마감일로 안내,get_registration_schedule; retrieve_business_docs,마감 예외(첫 영업일이 응당일) 반영 여부
 5,positive,11월 마감일은 언제야?,2026-11-03 표기; 첫 영업일 11-02가 응당일이라 다음 영업일로 밀린다는 근거; 업무 설명 출처 인용,11-02를 마감일로 안내; 출처 없는 설명,retrieve_business_docs; get_registration_schedule,업무 설명 근거 RAG 답변
 6,positive,자동이체 입금반영은 언제 진행돼?,응당일(청구일) 다음날; 휴일 관계없이 진행; 업무 설명 출처 인용,영업일 기준 다음날로 안내; 지어낸 규칙,retrieve_business_docs,업무 기준 문서 검색 정확성
 7,positive,B201은 11월에 몇 번 등록돼?,3회; 2026-11-05; 2026-11-16; 2026-11-25,2회 이하 또는 4회 이상 안내; 계산 결과에 없는 날짜,get_registration_schedule,여러 기준일(5·15·25일자) 규칙

@@ -167,13 +167,33 @@ class Explainer:
                             continue
                     except (CalendarMissing, RuleSyntaxError, KeyError):
                         continue
-                    moved = "" if occ.original == occ.date else " (기준일 규칙에 따라 이동)"
                     out.append({"rule": t, "base_date": name, "original": occ.original.isoformat(),
                                 "d": occ.date.isoformat(), "base_rule": self.confirmed.base_date_rules.get(name),
-                                "text": f"{name}: 출발 {_d(occ.original)} → 기준일 D {_d(occ.date)}{moved}, "
-                                        f"기준일 규칙 '{self.confirmed.base_date_rules.get(name)}', "
-                                        f"수행일 규칙 '{t}' → 수행일 {_d(run)}"})
+                                "text": f"{self.why(name, occ)}, 수행일 규칙 '{t}' → 수행일 {_d(run)}"})
         return out
+
+    def why(self, name: str, occ) -> str:
+        """기준일이 그 날짜가 된 이유. 출발 날짜 앞에는 기준일 이름이 아니라 출발 규칙을 쓴다
+        (예: '첫 영업일 11-02(월)이 자동이체 응당일과 같아 다음 영업일로 → 마감일 11-03(화)')."""
+        rule = self.base.rules.get(name)
+        if rule is None:
+            return f"{name} {_d(occ.date)}"
+        if rule.start_is_ref:
+            return f"{name}은 {rule.start}과 같음 → {name} {_d(occ.date)}"
+        if occ.original == occ.date:
+            return f"{rule.start} {_d(occ.original)} → {name} {_d(occ.date)}"
+        reasons = []
+        step = occ.original
+        try:
+            if rule.holiday and not self.bd.is_bd(occ.original):
+                step = self.bd.next_bd(step) if rule.holiday == "next" else self.bd.prev_bd(step)
+                reasons.append(f"휴일이라 {'다음' if rule.holiday == 'next' else '이전'} 영업일로")
+        except CalendarMissing:
+            pass
+        if step != occ.date and rule.overlap_next:
+            reasons.append(f"{rule.overlap_next}과 같아 다음 영업일로")
+        reason = (" " + ", ".join(reasons)) if reasons else " 기준일 규칙에 따라 이동"
+        return f"{rule.start} {_d(occ.original)}{'이' if reasons else ''}{reason} → {name} {_d(occ.date)}"
 
 
 def make_tools(tools: ScheduleTools, retriever=None) -> list[Any]:

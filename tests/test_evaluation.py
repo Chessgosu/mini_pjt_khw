@@ -13,8 +13,8 @@ CASES = {c["id"]: c for c in load_cases()}
 
 def ok_judgement(case: dict) -> dict:
     split = lambda s: [t.strip() for t in s.split(";") if t.strip()]
-    return {"traits": [{"item": t, "ok": True, "reason": "충족"} for t in split(case["expected_traits"])],
-            "forbidden": [{"item": t, "ok": True, "reason": "위반 없음"} for t in split(case["forbidden"])]}
+    return {"traits": [{"item": t, "met": True, "reason": "충족"} for t in split(case["expected_traits"])],
+            "forbidden": [{"item": t, "violated": False, "reason": "위반 없음"} for t in split(case["forbidden"])]}
 
 
 def test_cases_file() -> None:
@@ -49,7 +49,7 @@ def test_tool_check() -> None:
 def test_judge_check() -> None:
     assert judge_check(ok_judgement(CASES["1"]))[0]
     bad = ok_judgement(CASES["1"])
-    bad["forbidden"][0]["ok"] = False
+    bad["forbidden"][0]["violated"] = True
     ok, failed = judge_check(bad)
     assert not ok and failed[0].startswith("[금지]")
     assert judge_check(None) == (False, ["AI 판정 실패"])
@@ -80,11 +80,29 @@ def test_summary_criteria() -> None:
 def test_run_cases_with_fake_llm(data_dir: Path, fake_llm) -> None:
     """가짜 LLM으로 전체 흐름(채팅 → 판정)이 돌아가는지만 확인."""
     chat = make_chat(data_dir, fake_llm)
-    fake_llm.set("eval_judge", lambda p: {"traits": [{"item": t, "ok": True, "reason": "-"} for t in p["expected_traits"]],
-                                          "forbidden": [{"item": t, "ok": True, "reason": "-"} for t in p["forbidden"]]})
+    fake_llm.set("eval_judge", lambda p: {"traits": [{"item": t, "met": True, "reason": "-"} for t in p["expected_traits"]],
+                                          "forbidden": [{"item": t, "violated": False, "reason": "-"} for t in p["forbidden"]]})
     cases = [CASES[i] for i in ("2", "16", "19")]
     results = run_cases(chat, chat.client, cases)
     assert [r.passed for r in results] == [True, True, True]
     assert "find_jobs_by_date" in results[0].tools
     pii_payload = [p for purpose, p in fake_llm.calls if purpose == "eval_judge"][-1]
     assert "110-123-456789" not in str(pii_payload)                                # 평가 판정에도 개인정보 가림
+
+
+def test_judge_with_votes(fake_llm) -> None:
+    from evaluation.run_eval import judge_with_votes
+    from src.agent import LlmSettings, make_client
+    client = make_client(LlmSettings(model_id="m", has_credentials=True, timeout_seconds=5), fake_llm)
+    good = {"traits": [{"item": "a", "met": True, "reason": "-"}], "forbidden": []}
+    bad = {"traits": [{"item": "a", "met": False, "reason": "-"}], "forbidden": []}
+    seq = iter([bad, good, good])
+    fake_llm.set("eval_judge", lambda p: next(seq))
+    j, votes = judge_with_votes(client, {"x": 1})
+    assert votes == [False, True, True] and judge_check(j)[0]                     # 다수결로 통과
+    seq2 = iter([bad, bad, good])
+    fake_llm.set("eval_judge", lambda p: next(seq2))
+    j, votes = judge_with_votes(client, {"x": 1})
+    assert votes == [False, False] and not judge_check(j)[0]                      # 2표 실패면 바로 실패
+    fake_llm.set("eval_judge", good)
+    assert judge_with_votes(client, {"x": 1})[1] == [True]                        # 첫 판정 통과면 한 번만

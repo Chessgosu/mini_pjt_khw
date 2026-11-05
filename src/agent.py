@@ -190,14 +190,20 @@ class ChatAnswer(_Strict):
 
 class TraitCheck(_Strict):
     item: str
-    ok: bool = Field(description="expected_traits면 충족 여부, forbidden이면 '위반하지 않음' 여부")
+    met: bool = Field(description="답변이 이 기대 특성을 갖췄으면 true")
+    reason: str
+
+
+class ForbiddenCheck(_Strict):
+    item: str
+    violated: bool = Field(description="답변이 이 금지 항목을 했으면 true, 하지 않았으면 false")
     reason: str
 
 
 class EvalJudgement(_Strict):
-    """평가 전용 (evaluation/run_eval.py): 답변이 기대 특성을 갖췄는지, 금지 항목을 어기지 않았는지."""
+    """평가 전용 (evaluation/run_eval.py): 답변이 기대 특성을 갖췄는지, 금지 항목을 어겼는지."""
     traits: list[TraitCheck]
-    forbidden: list[TraitCheck]
+    forbidden: list[ForbiddenCheck]
 
 
 SCHEMAS: dict[str, type[BaseModel]] = {
@@ -258,15 +264,18 @@ SYSTEM_PROMPTS: dict[str, str] = {
         "facts(코드가 계산한 결과)와 sections(업무 설명 원문)만 근거로 질문에 한국어 존댓말 한두 문장으로 답한다. "
         "facts에 citation이 있으면 citations에 그 값을 빠짐없이 그대로 넣고, 문장에는 각 날짜를 YYYY-MM-DD로, JOB ID를 그대로 쓴다. "
         "facts에 없는 날짜·JOB은 쓰지 않고, 날짜를 직접 계산해 만들지 않는다. "
-        "등록일과 수행일(run_date)이 다르면 '수행일 YYYY-MM-DD HH:MM 시작이라 전날 등록'처럼 이유를 짧게 덧붙인다. "
-        "facts의 basis(기준일 출발 날짜·요일 → 기준일 D, 기준일 규칙)가 있으면 날짜가 정해진 이유를 한 구절로 설명한다 "
-        "(예: 출발 날짜가 토요일이라 기준일이 다음 영업일로 이동, 앞 달 말일자 기준일이 이번 달로 넘어옴). "
+        "JOB 하나를 물으면: 등록일과 수행일(run_date)이 다를 때 '수행일 YYYY-MM-DD HH:MM 시작이라 전날 등록'처럼, "
+        "basis가 있으면 그 이유(예: 매월 5일이 토요일이라 응당일이 다음 영업일로 이동)를 한 구절로 덧붙인다. "
+        "basis의 표현을 그대로 따르고, 이동 전 출발 날짜를 기준일 날짜인 것처럼 쓰지 않는다. "
+        "날짜로 JOB 목록을 물으면: JOB마다 이유를 붙이지 말고, 다음 달 수행분이 섞여 있을 때만 그 수행일(YYYY-MM-DD)을 "
+        "넣어 한 문장으로 알린다(예: 'A001·E001은 2026-12-01 수행분이라 전날 등록'). "
         "업무 규칙을 묻는 질문(언제 진행돼? 등)은 sections 원문 내용으로 말로 답하고 날짜 목록을 만들지 않는다. "
         "sections를 근거로 쓰면 그 원문 문장을 citations에 글자 그대로 넣는다. "
         "근거로 답할 수 없으면 answerable=false로 하고 추측하지 않는다."),
     "eval_judge": (
         "평가자로서 채팅 답변(answer)과 오류 코드(codes)만 보고 판정한다. expected_traits의 항목마다 답변이 그 특성을 "
-        "갖췄으면 ok=true, forbidden의 항목마다 답변이 그것을 하지 않았으면 ok=true(위반하면 false). "
+        "갖췄으면 met=true. forbidden의 항목마다 답변이 그 금지 행동을 실제로 했으면 violated=true, 하지 않았으면 false. "
+        "reason과 판정이 서로 맞아야 한다. "
         "같은 뜻을 다른 말로 표현해도 충족으로 본다. 날짜는 'YYYY-MM-DD'와 'M월 D일', 'MM-DD'를 같은 날로 본다. "
         "'~니다'와 '~요'는 모두 존댓말이다. forbidden 항목의 날짜·안내는 그 날짜를 질문의 답(등록일 등)으로 안내했을 때만 "
         "위반이고, 수행일·기준일 같은 근거 설명에서 언급한 것은 위반이 아니다. "

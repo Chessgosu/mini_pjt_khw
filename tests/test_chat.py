@@ -21,7 +21,7 @@ def test_b001_in_december(data_dir: Path, fake_llm) -> None:
     r = make_chat(data_dir, fake_llm).ask("B001은 12월에 언제 등록돼?", SEL)
     assert "2026-12-06" in r["answer"] and "B001" in r["answer"]
     assert set(r) >= {"answer", "contexts", "trace"}
-    assert [c["doc_id"] for c in r["contexts"]] == ["schedule#2026-12-06#B001"]
+    assert [c["doc_id"] for c in r["contexts"]] == ["schedule#2026-12-06#B001", "rule#registration"]
     assert steps(r) == ["guard", "parse", "tool:get_registration_schedule", "compose", "verify"]
 
 
@@ -29,7 +29,7 @@ def test_jobs_on_25th(data_dir: Path, fake_llm) -> None:
     r = make_chat(data_dir, fake_llm).ask("25일에 등록되는 배치는 뭐야?", SEL)
     for job in ("B106", "B201", "D001", "E001"):
         assert job in r["answer"]
-    assert {c["doc_id"].split("#")[2] for c in r["contexts"]} == {"B106", "B201", "D001", "E001"}
+    assert {c["doc_id"].split("#")[2] for c in r["contexts"] if c["doc_id"].startswith("schedule#")} == {"B106", "B201", "D001", "E001"}
     assert "tool:find_jobs_by_date" in steps(r)
 
 
@@ -44,7 +44,7 @@ def test_more_schedule_answers(data_dir: Path, fake_llm, q: str, dates: list[str
 
 def test_next_month_runs_counted_on_30th(data_dir: Path, fake_llm) -> None:
     r = make_chat(data_dir, fake_llm).ask("11월 30일에 등록되는 배치는?", SEL)
-    assert {c["doc_id"].split("#")[2] for c in r["contexts"]} == {"A001", "B105", "B202", "D001", "E001"}
+    assert {c["doc_id"].split("#")[2] for c in r["contexts"] if c["doc_id"].startswith("schedule#")} == {"A001", "B105", "B202", "D001", "E001"}
 
 
 # ------------------------------------------------------------ 월 해석
@@ -96,7 +96,7 @@ def test_unconfirmed_job_excluded(data_dir: Path, fake_llm) -> None:
     chat = make_chat(data_dir, fake_llm)
     ConfirmedStore(data_dir).remove("run_rules", "B201")
     r = chat.ask("25일에 등록되는 배치는 뭐야?", SEL)
-    assert {c["doc_id"].split("#")[2] for c in r["contexts"]} == {"B106", "D001", "E001"}
+    assert {c["doc_id"].split("#")[2] for c in r["contexts"] if c["doc_id"].startswith("schedule#")} == {"B106", "D001", "E001"}
     assert "B201" not in r["answer"].split("(미확정")[0]
     assert "미확정 JOB 1개는 빼고 답했어요" in r["answer"]
     r = chat.ask("B201은 11월에 몇 번 등록돼?", SEL)
@@ -190,3 +190,14 @@ def test_basis_dates_allowed_in_answer(data_dir: Path, fake_llm) -> None:
 def test_business_answer_has_source(data_dir: Path, fake_llm) -> None:
     r = make_chat(data_dir, fake_llm).ask("11월 마감일은 언제야?", SEL)
     assert r["answer"].endswith("(출처: business-explanation.md · ## 마감)")
+
+def test_basis_states_reason_for_move(data_dir: Path, fake_llm) -> None:
+    """근거 문장은 출발 규칙 이름과 이동 이유를 쓴다 ('마감일 11-02'처럼 읽히지 않게)."""
+    from src.tools import ScheduleTools
+    make_chat(data_dir, fake_llm)
+    t = ScheduleTools(data_dir)
+    b001 = t.get_registration_schedule("B001", "2026-12")["entries"][0]["basis"][0]["text"]
+    assert b001.startswith("매월 5일 2026-12-05(토)이 휴일이라 다음 영업일로 → 자동이체 5일자 응당일 2026-12-07(월)")
+    a002 = t.get_registration_schedule("A002", "2026-11")["entries"][0]["basis"][0]["text"]
+    assert a002.startswith("첫 영업일 2026-11-02(월)이 자동이체 응당일과 같아 다음 영업일로 → 마감일 2026-11-03(화)")
+    assert "마감일 2026-11-02" not in a002 and "출발" not in a002
