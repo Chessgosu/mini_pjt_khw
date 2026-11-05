@@ -55,3 +55,36 @@ def make_inputs(schedule_rows: str, explanation_text: str, calendar: Calendar) -
     jobs, f1 = parse_schedule(header + schedule_rows)
     explanation, f2 = parse_explanation(explanation_text)
     return Inputs(jobs, explanation, calendar, f1 + f2)
+
+
+# ------------------------------------------------------------ 가짜 LLM 응답 (07단계 확인 그래프)
+
+EVIDENCE = {
+    "자동이체": "선택한 출금일자가 주말이나 공휴일이면 다음 영업일이 응당일이 됩니다.",
+    "마감일": "매월 첫 영업일에 진행하며, 첫 영업일이 응당일인 경우 다음 영업일부터 진행합니다.",
+    "결산 기준일": "결산의 기준일은 마감일과 같습니다.",
+}
+X001_RULES = ["매월 10일", "자동이체 20일자 응당일 D-1 영업일"]
+
+
+def install_sample_ai(fake_llm, base_rules: dict | None = None) -> None:
+    """가짜 LLM이 expected-202611.md의 값을 근거 문장과 함께 제안하도록 설정한다."""
+    rules = {**sample_base_date_rules(), "결산 기준일": "마감일과 같음", **(base_rules or {})}
+    normalized = sample_normalized_rules()
+
+    def base(p):
+        name = p["name"]
+        ev = EVIDENCE["자동이체"] if name.startswith("자동이체") else EVIDENCE[name]
+        return {"name": name, "rule": rules[name], "evidence": ev}
+
+    def normalize(p):
+        return {"job_id": p["job_id"], "rules": normalized[p["job_id"]], "evidence": p["rule"]}
+
+    def describe(p):
+        return {"job_id": p["job_id"], "rules": X001_RULES, "evidence": p["description"]}
+
+    fake_llm.set("base_date_rule", base)
+    fake_llm.set("normalize_rule", normalize)
+    fake_llm.set("description_rules", describe)
+    fake_llm.set("business_match", lambda p: {"expr": p["expr"], "section": "마감",
+                                              "evidence": "매월 첫 영업일에 진행하며"})

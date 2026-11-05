@@ -143,6 +143,16 @@ def test_evidence_whitespace_insensitive(data_dir: Path) -> None:
     assert check_evidence("매월 첫 영업일에 진행하며", [src]) is None
 
 
+def test_evidence_multiple_sentences(data_dir: Path) -> None:
+    """떨어진 두 문장을 줄바꿈으로 이어도 각각 원문에 있으면 통과, 하나라도 지어낸 문장이면 불일치."""
+    src = load_inputs(data_dir).explanation.sections["자동이체"].text
+    a = "선택한 출금일자가 주말이나 공휴일이면 다음 영업일이 응당일이 됩니다."
+    b = "휴일 때문에 서로 다른 응당일자의 응당일이 같은 날로 겹치면, 원래 출금일이 가장 빠른 응당일자의 작업만 진행하고 나머지 응당일자의 작업은 진행하지 않습니다."
+    assert check_evidence(f"{a}\n{b}", [src]) is None
+    assert check_evidence(f"{a} {b}", [src]) is None
+    assert check_evidence(f"{a}\n겹치면 모두 진행합니다.", [src]) == EVIDENCE_MISMATCH
+
+
 @pytest.mark.parametrize("evidence", ["매월 둘째 영업일에 진행하며", "", "   ", "마감은 매월 1일입니다"])
 def test_evidence_mismatch(data_dir: Path, evidence: str) -> None:
     src = load_inputs(data_dir).explanation.sections["마감"].text

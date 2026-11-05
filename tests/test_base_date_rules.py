@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from src.engine import BaseDates, BizDays, compute_schedule, parse_base_date_rule
+from src.models import Code
 from src.parsing import load_inputs
 from tests.helpers import fixture_calendar, sample_base_date_rules, sample_confirmed
 
@@ -116,3 +117,39 @@ def test_overlap_exclusion_jobs_2025_10(oct2025) -> None:
     excluded = [n for n in ("자동이체 5일자 응당일", "자동이체 10일자 응당일")
                 if base_dates(oct2025.calendar).occurrence(n, "2025-10").excluded]
     assert excluded == ["자동이체 10일자 응당일"]                # F001의 10일자분은 계산 대상에서 빠짐
+
+
+# ------------------------------------------------------------ 참조하는 기준일까지 확정되어야 계산 (07단계 보강)
+
+def test_referenced_base_dates_must_be_confirmed(real) -> None:
+    """마감일 규칙만 확정되고 그 규칙이 참조하는 자동이체 응당일이 미확정이면 A002도 미확정 (조용히 틀린 날짜 금지)."""
+    conf = sample_confirmed()
+    conf.base_date_rules = {"마감일": sample_base_date_rules()["마감일"]}
+    result = compute_schedule(real, conf, "2026-11")
+    assert Code.BASE_DATE_UNCONFIRMED in result.unconfirmed["A002"]
+    assert Code.BASE_DATE_UNCONFIRMED in result.unconfirmed["A003"]
+    assert not any(e.job_id == "A002" for e in result.entries)
+
+
+def test_reference_chain(real) -> None:
+    """결산 기준일 = 마감일과 같음 → 마감일이 없으면 미확정, 있으면 마감일과 같은 날."""
+    from src.engine import known_base_names, missing_base_names
+    rules = sample_base_date_rules()
+    known = known_base_names(real.jobs, sample_confirmed())
+    assert missing_base_names(["결산 기준일"], {"결산 기준일": "마감일과 같음"}, known) == {"마감일"}
+    assert missing_base_names(["결산 기준일"], {**rules, "결산 기준일": "마감일과 같음"}, known) == set()
+
+
+def test_every_group_uses_names_from_job_rules(real) -> None:
+    """'매 자동이체 응당일'(F001)은 JOB 규칙에 적힌 5·10·15·20·25·말일자 응당일 전부가 확정되어야 계산."""
+    from src.engine import known_base_names
+    known = known_base_names(real.jobs, sample_confirmed())
+    assert {n for n in known if n.startswith("자동이체")} == {f"자동이체 {k} 응당일" for k in
+                                                          ("5일자", "10일자", "15일자", "20일자", "25일자", "말일자")}
+    conf = sample_confirmed()
+    del conf.base_date_rules["자동이체 25일자 응당일"]
+    result = compute_schedule(real, conf, "2026-11")
+    assert Code.BASE_DATE_UNCONFIRMED in result.unconfirmed["F001"]
+    # 5일자 규칙도 '앞선 자동이체 응당일과 겹치면 수행 안 함'으로 묶음 전체(25일자 포함)에 기대므로 미확정
+    assert Code.BASE_DATE_UNCONFIRMED in result.unconfirmed["B001"]
+    assert "C001" not in result.unconfirmed and "D001" not in result.unconfirmed   # 기준일과 무관한 JOB은 계산

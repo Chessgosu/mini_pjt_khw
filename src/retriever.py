@@ -64,9 +64,12 @@ class RetrievedDoc:
 
 
 def evidence_in_source(evidence: str, source: str) -> bool:
-    """AI가 낸 근거 문장이 원문에 (공백 차이 무시하고) 그대로 들어 있는지."""
-    ev = normalize_text(evidence)
-    return bool(ev) and ev in normalize_text(source)
+    """AI가 낸 근거가 원문에 (공백 차이 무시하고) 그대로 들어 있는지.
+    근거가 여러 문장이면(줄바꿈이나 문장 끝으로 구분) 문장마다 원문에 그대로 있어야 한다."""
+    src = normalize_text(source)
+    pieces = [normalize_text(p) for p in re.split(r"\n+|(?<=[.!?])\s+", evidence or "")]
+    pieces = [p for p in pieces if p]
+    return bool(pieces) and all(p in src for p in pieces)
 
 
 def check_evidence(evidence: str, sources: list[str]) -> str | None:

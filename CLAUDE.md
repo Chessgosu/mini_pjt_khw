@@ -90,6 +90,7 @@ mini-pjt_KHW/
 │   ├── engine.py       # 계산 엔진 (날짜는 여기서만 계산)
 │   ├── store.py        # 확정값·대기 제안 저장소 (confirmed.json, pending.json)
 │   ├── verify.py       # 등록 내역 xlsx 유효성 검사(파일 가드레일)·정상/누락/초과 판정
+│   ├── confirm.py      # 확인 그래프 (LangGraph interrupt HITL): AI 제안·근거 검사·미리보기 → 확인·수정·거부 → 확정
 │   ├── tools.py        # 도메인 도구 (계산 엔진, 일정 조회, xlsx 가드레일·판정을 에이전트 도구로 노출)
 │   ├── retriever.py    # RAG 파이프라인 (business-explanation.md 하이브리드 검색)
 │   └── app.py          # Streamlit 화면

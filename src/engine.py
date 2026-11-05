@@ -256,13 +256,7 @@ class BaseDates:
 
     def group(self, spec: str) -> list[str]:
         """묶음 이름 → 기준일 이름 목록. '자동이체 응당일' → '자동이체 *일자 응당일' 전부."""
-        if spec in self.rules:
-            return [spec]
-        words = spec.split()
-        if len(words) >= 2:
-            head, tail = words[0], " ".join(words[1:])
-            return [n for n in self.rules if n.startswith(head + " ") and n.endswith(" " + tail)]
-        return []
+        return group_members(spec, self.rules)
 
     def check_cycles(self) -> list[str]:
         """참조 순환이 있는 기준일 이름 목록."""
@@ -374,6 +368,68 @@ def expand_base_names(expr: str, every: bool, base: BaseDates) -> list[str]:
     return [expr]
 
 
+def group_members(spec: str, names) -> list[str]:
+    """묶음 이름 → names 중 해당 기준일. '자동이체 응당일' → '자동이체 *일자 응당일' 전부 (정렬)."""
+    if spec in names:
+        return [spec]
+    words = spec.split()
+    if len(words) >= 2:
+        head, tail = words[0], " ".join(words[1:])
+        return sorted(n for n in names if n.startswith(head + " ") and n.endswith(" " + tail))
+    return []
+
+
+def known_base_names(jobs, confirmed: "Confirmed") -> set[str]:
+    """알려진 기준일 이름: JOB 규칙(표준이거나 확정된 규칙)에 직접 적힌 이름 + 확정된 기준일 규칙 이름.
+    '매 <업무> <구분>' 묶음은 이 이름들 중에서 고른다."""
+    names = set(confirmed.base_date_rules)
+    for job in jobs:
+        c = classify_rule(job.rule)
+        texts = [job.rule] if c.status == STANDARD else confirmed.run_rules.get(job.job_id, [])
+        for t in texts:
+            cc = classify_rule(t)
+            if cc.status == STANDARD and cc.parts and cc.parts.d_op and not cc.parts.every:
+                names.update(expand_base_names(cc.parts.business_expr, False, None))
+    return names
+
+
+def base_names_of(parts: "RuleParts", known: set[str]) -> list[str]:
+    """D 규칙이 쓰는 기준일 이름 목록. '매' 묶음은 알려진 이름 중에서."""
+    if parts.every:
+        return group_members(parts.business_expr, known)
+    return expand_base_names(parts.business_expr, False, None)
+
+
+def missing_base_names(names: list[str], base_rule_texts: dict[str, str], known: set[str]) -> set[str]:
+    """names와 그 규칙이 참조하는 기준일(같음·같으면·겹치면 묶음)을 따라가며 확정되지 않은 이름을 모은다.
+    참조 묶음에 알려진 기준일이 하나도 없으면 묶음 이름 자체를 미확정으로 본다."""
+    missing: set[str] = set()
+    seen: set[str] = set()
+    stack = list(names)
+    while stack:
+        name = stack.pop()
+        if name in seen:
+            continue
+        seen.add(name)
+        text = base_rule_texts.get(name)
+        if text is None:
+            missing.add(name)
+            continue
+        try:
+            rule = parse_base_date_rule(name, text)
+        except RuleSyntaxError:
+            continue                      # 문법 오류는 compute_schedule에서 MD_SYNTAX_ERROR로 보고
+        if rule.start_is_ref:
+            stack.append(rule.start)
+        for spec in (rule.overlap_next, rule.exclude_group):
+            if spec:
+                members = group_members(spec, known | set(base_rule_texts))
+                if not members:
+                    missing.add(spec)
+                stack += members
+    return missing
+
+
 def business_word(expr: str) -> str:
     """업무 매칭에 쓰는 업무 표현 (첫 단어). 예: '자동이체 5일자 응당일' → '자동이체', '마감일' → '마감일'."""
     return expr.split()[0]
@@ -464,6 +520,7 @@ def compute_schedule(inputs: Inputs, confirmed: Confirmed, year_month: str) -> S
     unconfirmed: dict[str, list[Code]] = {}
     needs_explanation = False
     titles = set(inputs.explanation.titles) if inputs.explanation else set()
+    known = known_base_names(inputs.jobs, confirmed)
     for job in inputs.jobs:
         classified, codes, errs = _resolve_rules(job, confirmed)
         blocking += errs
@@ -476,9 +533,9 @@ def compute_schedule(inputs: Inputs, confirmed: Confirmed, year_month: str) -> S
                 if word not in titles and word not in confirmed.business_matches \
                         and c.parts.business_expr not in confirmed.business_matches:
                     codes.append(Code.BUSINESS_MATCH_UNCONFIRMED)
-                names = expand_base_names(c.parts.business_expr, c.parts.every, base)
-                if not names or any(n not in rules for n in names):
-                    codes.append(Code.BASE_DATE_UNCONFIRMED)
+                names = base_names_of(c.parts, known)
+                if not names or missing_base_names(names, confirmed.base_date_rules, known):
+                    codes.append(Code.BASE_DATE_UNCONFIRMED)   # 참조하는 기준일까지 모두 확정되어야 계산
         if codes:
             unconfirmed[job.job_id] = sorted(set(codes), key=lambda x: x.value)
         else:
