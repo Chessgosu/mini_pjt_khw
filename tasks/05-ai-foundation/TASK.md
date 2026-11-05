@@ -6,18 +6,23 @@
 
 ## 체크리스트
 
-- [ ] 단일 LLM 함수: Claude on AWS Bedrock (`langchain-aws`), 모델 ID·리전은 `.env`
-- [ ] 미들웨어: 시도당 30초, 재시도 1회, 실패·초과·스키마 불일치 시 직접 입력 경로로 전환
-- [ ] Pydantic 출력 스키마: 업무 매칭, **기준일 규칙**, 규칙 정규화, JOB 설명→규칙 목록, 채팅 조건, 채팅 답변+인용 목록
-- [ ] 미들웨어: 로그·트레이스의 자격 증명·개인정보 마스킹
-- [ ] LangSmith 트레이스: `LANGSMITH_TRACING` 켜면 기록, 꺼도 정상 동작
-- [ ] AI가 없을 때 직접 입력으로 같은 결과가 나오는 경로
+- [x] 단일 LLM 함수: Claude on AWS Bedrock (`langchain-aws`), 모델 ID·리전은 `.env`
+- [x] 미들웨어: 시도당 30초, 재시도 1회, 실패·초과·스키마 불일치 시 직접 입력 경로로 전환
+- [x] Pydantic 출력 스키마: 업무 매칭, **기준일 규칙**, 규칙 정규화, JOB 설명→규칙 목록, 채팅 조건, 채팅 답변+인용 목록
+- [x] 미들웨어: 로그·트레이스의 자격 증명·개인정보 마스킹
+- [x] LangSmith 트레이스: `LANGSMITH_TRACING` 켜면 기록, 꺼도 정상 동작
+- [x] AI가 없을 때 직접 입력으로 같은 결과가 나오는 경로
 
 ## 만들 파일
 
-- `src/agent.py` (LLM 함수·스키마)
+- `src/agent.py` (단일 LLM 함수 `LlmClient.call`, 미들웨어, Pydantic 스키마, 마스킹, LangSmith 트레이스)
 - `tests/test_ai_fallback.py`
 - `tests/test_observability.py`
+
+## 참고 사항
+
+- 실제 Bedrock 호출은 `.env`에 `BEDROCK_MODEL_ID`·AWS 자격 증명을 넣은 뒤 확인합니다 (테스트는 가짜 LLM만 사용).
+- `ac_observability`의 채팅 그래프·도구 호출 트레이스는 08단계에서 `tests/test_observability.py`에 추가합니다.
 
 ## 관련 인수 조건 (Seed)
 

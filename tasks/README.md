@@ -35,7 +35,7 @@ python tasks/verify.py all         # 전체
 | 02 · 계산 엔진 ⭐ | [02-calculation-engine](02-calculation-engine/TASK.md) | `ac_engine_correct`, `ac_base_date_rules`, `ac_sample_202611` | ✅ |
 | 03 · 확정 저장소 | [03-confirmed-store](03-confirmed-store/TASK.md) | `ac_invalidation` | ✅ |
 | 04 · xlsx 검증 | [04-xlsx-verification](04-xlsx-verification/TASK.md) | `ac_file_safety`, `ac_verdicts`, `ac_guardrail_codes` | ✅ |
-| 05 · AI 연동 기반 | [05-ai-foundation](05-ai-foundation/TASK.md) | `ac_ai_fallback`, `ac_observability` | ⬜ |
+| 05 · AI 연동 기반 | [05-ai-foundation](05-ai-foundation/TASK.md) | `ac_ai_fallback`, `ac_observability` | ✅ |
 | 06 · RAG | [06-rag](06-rag/TASK.md) | - | ⬜ |
 | 07 · 확인 그래프 (HITL) | [07-confirmation-graph](07-confirmation-graph/TASK.md) | `ac_ai_confirm_gate`, `ac_untrusted_input` | ⬜ |
 | 08 · 채팅 그래프 | [08-chat-graph](08-chat-graph/TASK.md) | `ac_chat_grounded`, `ac_out_of_scope`, `ac_chat_guardrails` | ⬜ |

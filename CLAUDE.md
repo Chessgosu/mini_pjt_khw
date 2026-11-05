@@ -84,7 +84,7 @@
 ```
 mini-pjt_KHW/
 ├── src/
-│   ├── agent.py        # 메인 에이전트 그래프 (LangGraph: 확인 그래프 + 채팅 그래프)
+│   ├── agent.py        # 단일 LLM 함수·미들웨어·스키마·마스킹(05) + 에이전트 그래프 (LangGraph: 확인 그래프 + 채팅 그래프)
 │   ├── models.py       # 공통 자료형·오류 코드 (Code, Scope, Finding)
 │   ├── parsing.py      # 입력 MD 3종 파싱, 규칙 문자열 나누기
 │   ├── engine.py       # 계산 엔진 (날짜는 여기서만 계산)
