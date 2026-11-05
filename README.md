@@ -53,28 +53,36 @@ cp .env.example .env        # AWS 리전·자격 증명, BEDROCK_MODEL_ID (예: 
 
 - 처음 실행하면 "기준일·규칙 확인" 화면에서 AI 제안을 확인(또는 직접 입력)해 확정합니다. 확정은 한 번이면 모든 달에 쓰입니다.
 - AI 설정이 없어도 직접 입력으로 확정하면 일정·검증은 같은 결과로 동작합니다(채팅만 꺼짐).
-- 테스트: `.venv\Scripts\python -m pytest -q` (404개, 네트워크 없이 가짜 LLM 사용)
+- 테스트: `.venv\Scripts\python -m pytest -q` (408개, 네트워크 없이 가짜 LLM 사용)
 - 단계별 검증: `.venv\Scripts\python tasks/verify.py NN`
 - 자체 평가(실제 Bedrock): `.venv\Scripts\python evaluation/run_eval.py --round 3`
 - 채팅 함수: `from src.agent import ask; ask("B001은 12월에 언제 등록돼?", "2026-11")` → `{"answer", "contexts", "trace"}` (`api_spec.md` 형식)
 
 ## RAGAS 평가 결과
-최종(3차) 평가 기준. 근거(contexts)가 있는 답변 10건을 Bedrock Claude Sonnet 4.6과 Titan 임베딩으로 측정했습니다.
+최종(5차) 평가 기준. 근거(contexts)가 있는 답변 10건을 Bedrock Claude Sonnet 4.6과 Titan 임베딩으로 측정했습니다.
 
-| 지표 | 1차 | 2차 | 3차 (최종) |
-|---|---|---|---|
-| context_recall | 0.833 | 0.942 | **0.942** |
-| context_precision | 0.633 | 0.517 | **0.500** |
-| faithfulness | 0.933 | 0.947 | **1.000** |
-| answer_relevancy | 0.683 | 0.679 | **0.742** |
+| 지표 | 1차 | 2차 | 3차 | 5차 (최종) |
+|---|---|---|---|---|
+| context_recall | 0.833 | 0.942 | 0.942 | **1.000** |
+| context_precision | 0.633 | 0.517 | 0.500 | **0.983** |
+| faithfulness | 0.933 | 0.947 | 1.000 | **0.947** |
+| answer_relevancy | 0.683 | 0.679 | 0.742 | **0.687** |
 
+- 4차는 RAGAS 측정값 40개 중 13개가 시간 초과로 빠져 표에서 제외했습니다 ([evaluation/round4_report.md](evaluation/round4_report.md)).
 - 3차에서 설명을 질문 유형에 맞게 줄이자 answer_relevancy가 올랐고, 근거 문장에 이동 이유를 넣자 faithfulness가 1.0이 됐습니다.
-- context_precision이 낮은 것은 검색 품질보다 측정 방식 문제입니다. RAGAS의 reference로 모범 답안 대신 평가 기준 목록(expected_traits, 예: "정중한 존댓말; 4개 JOB 빠짐없이 표기")을 넘기고 있어서, 날짜 목록 질문 4건은 근거가 모두 맞는 사실인데도 0점이 나옵니다 (회고의 남은 한계 참고).
+- 3차까지 context_precision이 낮았던 것은 측정 방식 문제였습니다.
+  - reference로 평가 기준 목록(expected_traits)을 넘기고 있었음 → 4차에서 문장으로 된 모범 답안(`evaluation/ragas_references.csv`)으로 교체
+  - RAGAS는 근거를 하나씩 따로 판정하는데, 채팅이 등록일 한 건마다 근거를 따로 만들어 어느 근거도 답 전체를 설명하지 못함 → 5차에서 도구 호출 한 번의 결과를 근거 문서 하나로 묶음
+  - 두 수정으로 0.500 → 0.983
+- 5차 faithfulness(0.947)는 3차에서 측정되지 않았던 #5가 들어오면서 내려갔습니다. 답변 끝의 출처 안내(파일·절 이름)가 근거 문서에 없어 "근거 없음"으로 판정됩니다.
+- answer_relevancy(0.687)는 날짜 답변에 이동 이유 설명이 붙는 만큼 질문 대비 문장이 길어져 낮게 나옵니다.
 
 ## 인-아웃 세트 통과율 (자체 평가)
 - 1차: 13 / 20 통과 (guardrail 3/3) → [evaluation/round1_report.md](evaluation/round1_report.md)
 - 2차: 19 / 20 통과 → [evaluation/round2_report.md](evaluation/round2_report.md)
-- 3차 (최종): **20 / 20** 통과 (positive 8/8, negative 5/5, edge 4/4, guardrail 3/3, 20건 모두 첫 AI 판정에서 통과) → [evaluation/round3_report.md](evaluation/round3_report.md)
+- 3차: 20 / 20 통과 (20건 모두 첫 AI 판정에서 통과) → [evaluation/round3_report.md](evaluation/round3_report.md)
+- 4차: 20 / 20 통과 (RAGAS 일부 누락) → [evaluation/round4_report.md](evaluation/round4_report.md)
+- 5차 (최종): **20 / 20** 통과 (positive 8/8, negative 5/5, edge 4/4, guardrail 3/3) → [evaluation/round5_report.md](evaluation/round5_report.md)
 - 개선폭: 1차 대비 +7건. 주요 개선 사항:
   - 2차: JOB 찾기를 도구로 옮겨 없는 JOB도 `get_registration_schedule` 결과로 답함
   - 2차: 기준일 근거(출발 날짜·요일 → 기준일 D)를 도구 결과에 넣고, 업무 답변에 출처 표시
@@ -85,6 +93,8 @@ cp .env.example .env        # AWS 리전·자격 증명, BEDROCK_MODEL_ID (예: 
     - 금지 항목 판정을 `violated` 칸으로 분리 (판정 뒤집힘 방지)
     - 판정이 실패로 나오면 다수결로 다시 판정 (3차에서는 다시 판정할 일이 없었음)
     - 테스트 세트 #4의 금지 항목 `마감일 11-02 안내`를 `11-02를 마감일로 안내`로 명확화 (#5와 같은 형식, 기대 답은 그대로)
+    - 4차: RAGAS reference를 모범 답안으로 교체, 측정값이 하나라도 빠지면 보고서를 만들지 않고 `--ragas-only`로 다시 측정
+  - 5차: 근거를 도구 호출 단위 문서 하나로 묶고, 규칙 인용 기호를 `'…'`에서 `「…」`로 변경 (채점 AI가 `\'`를 써서 RAGAS가 JSON을 읽지 못하던 문제)
 - 성공 기준(18/20 이상, guardrail 3/3, faithfulness ≥ 0.8) 충족
 
 ## 트라이앤에러 회고
@@ -103,8 +113,10 @@ cp .env.example .env        # AWS 리전·자격 증명, BEDROCK_MODEL_ID (예: 
   - **채팅에서 자유 ReAct 대신 "AI가 조건 추출 → 코드가 도구 선택"**: 정답 목록을 코드가 만들어야 인용을 정확히 대조할 수 있습니다. 도구 호출은 트레이스에 그대로 남습니다.
   - **하이브리드 검색에 "제목 일치" 신호 추가**: 업무 표현이 절 제목을 가리키는 도메인 특성을 반영했습니다.
 - **남은 한계 · 향후 개선 방향**
-  - context_precision(0.500)은 RAGAS reference로 평가 기준 목록을 쓰는 한계 때문에 낮게 나옵니다. 근거가 있는 케이스에 문장으로 된 모범 답안(reference)을 따로 만들어 측정하는 것이 다음 개선입니다.
-  - 평가 AI 판정은 실행마다 흔들릴 수 있습니다. 3차에서는 판정 형식 분리와 다수결 재판정을 넣었고, 실제로는 20건 모두 첫 판정에서 통과했습니다.
+  - answer_relevancy(0.687)가 가장 낮은 지표입니다. 날짜 답변의 이동 이유 설명을 더 짧게 하거나, 질문이 이유를 물을 때만 붙이는 방향을 검토할 수 있습니다.
+  - 업무 답변 끝의 출처 안내는 코드가 붙이는 문장이라 RAGAS faithfulness에서 "근거 없음"으로 잡힙니다. 평가할 때 출처 안내를 뺀 답변을 넘기는 방법이 있습니다.
+  - RAGAS 채점 AI의 응답이 JSON 형식을 어기면 측정값이 빠집니다. 근거 문장에 작은따옴표를 쓰지 않도록 바꿨지만, 다른 기호에서도 생길 수 있습니다.
+  - 평가 AI 판정은 실행마다 흔들릴 수 있습니다. 3차에서 판정 형식 분리와 다수결 재판정을 넣었습니다.
   - 평가 중 Bedrock 일일 토큰 한도(ThrottlingException)에 걸린 적이 있습니다. 앱은 이때 "AI 응답을 받지 못했어요"로 안내하지만, 평가는 한도가 풀린 뒤 다시 실행해야 합니다.
   - `매 <업무> <구분>` 묶음은 JOB 규칙에 적힌 기준일 이름에서 고릅니다. 어떤 JOB에도 직접 적히지 않은 기준일은 직접 입력이 필요합니다.
   - 데이터 변경·작업 요청 차단은 키워드 정규식과 AI 분류의 2중 방어입니다. 우회 표현이 나오면 키워드를 보강해야 합니다.

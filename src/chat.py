@@ -310,7 +310,7 @@ class ChatService:
         base_facts = [{"citation": f"{b['name']} {b['date']}", **b} for b in base.get("base_dates", [])]
         sections = [{"doc_id": d.doc_id, "text": d.text} for d in docs]
         contexts = sections + [{"doc_id": f"base_date#{b['name']}#{b['date']}",
-                                "text": f"{b['name']}: {b['date']} (출발 {b['original']}, 기준일 규칙 '{b['rule']}')"}
+                                "text": f"{b['name']}: {b['date']} (출발 {b['original']}, 기준일 규칙 「{b['rule']}」)"}
                                for b in base_facts]
         return {"target_ym": ym, "facts": base_facts, "expected": [], "sections": sections, "base_facts": base_facts,
                 "contexts": contexts, "route": "compose", "trace": tr + _t("tool:base_dates_in_month", ym, base)}

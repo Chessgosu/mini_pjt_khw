@@ -157,7 +157,7 @@ class Explainer:
             if cc.status != STANDARD:
                 continue
             if not cc.parts.d_op:
-                out.append({"rule": t, "text": f"월 기준 규칙 '{t}' → 수행일 {_d(run)}"})
+                out.append({"rule": t, "text": f"월 기준 규칙 「{t}」 → 수행일 {_d(run)}"})
                 continue
             for name in base_names_of(cc.parts, self.known):
                 for origin in required_months(year_month):
@@ -169,7 +169,7 @@ class Explainer:
                         continue
                     out.append({"rule": t, "base_date": name, "original": occ.original.isoformat(),
                                 "d": occ.date.isoformat(), "base_rule": self.confirmed.base_date_rules.get(name),
-                                "text": f"{self.why(name, occ)}, 수행일 규칙 '{t}' → 수행일 {_d(run)}"})
+                                "text": f"{self.why(name, occ)}, 수행일 규칙 「{t}」 → 수행일 {_d(run)}"})
         return out
 
     def why(self, name: str, occ) -> str:
