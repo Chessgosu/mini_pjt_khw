@@ -10,7 +10,7 @@ import pytest
 from src.agent import MASK, LlmSettings, make_client, mask_text, tracing_enabled
 
 FAST = LlmSettings(model_id="m", has_credentials=True, timeout_seconds=0.3, max_retries=1)
-GOOD = {"in_scope": True, "job_id": "B001", "year": None, "month": 12, "day": None}
+GOOD = {"kind": "schedule", "job_id": "B001", "year": None, "month": 12, "day": None}
 SECRET = "wJalrXUtnFEMI-K7MDENG-bPxRfiCY-EXAMPLEKEY"
 ACCESS = "AKIAIOSFODNN7EXAMPLE"
 
@@ -128,3 +128,30 @@ def test_normal_text_untouched(text: str) -> None:
 def test_secret_masked_but_not_counted_as_pii(secrets_env) -> None:
     masked, found = mask_text(f"key {ACCESS}")
     assert ACCESS not in masked and not found
+
+
+# ------------------------------------------------------------ 08단계: 채팅 그래프·도구 호출 트레이스
+
+def test_chat_trace_contains_graph_tool_and_llm(data_dir, fake_llm, tracer) -> None:
+    from tests.chat_helpers import make_chat
+    r = make_chat(data_dir, fake_llm).ask("B001은 12월에 언제 등록돼?", "2026-11")
+    names = [run["name"] for run in tracer.runs]
+    assert {"chat_graph", "get_registration_schedule", "LlmCall:chat_conditions", "LlmCall:chat_answer"} <= set(names)
+    llm = next(run for run in tracer.runs if run["name"] == "LlmCall:chat_conditions")
+    assert llm["outputs"]["attempts"] == 1 and llm["outputs"]["outcome"] == "ok"
+    assert "2026-12-06" in r["answer"]
+
+
+def test_chat_same_answer_without_tracing(data_dir, fake_llm, monkeypatch) -> None:
+    from tests.chat_helpers import make_chat
+    t = FakeTraceable()
+    monkeypatch.setattr(langsmith, "traceable", t)
+    monkeypatch.setenv("LANGSMITH_TRACING", "false")
+    r = make_chat(data_dir, fake_llm).ask("B001은 12월에 언제 등록돼?", "2026-11")
+    assert "2026-12-06" in r["answer"] and t.runs == []
+
+
+def test_chat_trace_has_no_secrets(data_dir, fake_llm, tracer, secrets_env) -> None:
+    from tests.chat_helpers import make_chat
+    r = make_chat(data_dir, fake_llm).ask(f"B001은 12월에 언제 등록돼? {SECRET}", "2026-11")
+    assert SECRET not in repr(tracer.runs) and SECRET not in repr(r) and SECRET not in repr(fake_llm.calls)

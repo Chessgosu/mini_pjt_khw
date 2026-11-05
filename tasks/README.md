@@ -38,7 +38,7 @@ python tasks/verify.py all         # 전체
 | 05 · AI 연동 기반 | [05-ai-foundation](05-ai-foundation/TASK.md) | `ac_ai_fallback`, `ac_observability` | ✅ |
 | 06 · RAG | [06-rag](06-rag/TASK.md) | - | ✅ |
 | 07 · 확인 그래프 (HITL) | [07-confirmation-graph](07-confirmation-graph/TASK.md) | `ac_ai_confirm_gate`, `ac_untrusted_input` | ✅ |
-| 08 · 채팅 그래프 | [08-chat-graph](08-chat-graph/TASK.md) | `ac_chat_grounded`, `ac_out_of_scope`, `ac_chat_guardrails` | ⬜ |
+| 08 · 채팅 그래프 | [08-chat-graph](08-chat-graph/TASK.md) | `ac_chat_grounded`, `ac_out_of_scope`, `ac_chat_guardrails` | ✅ |
 | 09 · Streamlit 화면 | [09-streamlit-ui](09-streamlit-ui/TASK.md) | `ac_matrix_display`, `ac_same_dates_everywhere` | ⬜ |
 | 10 · 평가·문서 | [10-evaluation](10-evaluation/TASK.md) | `ac_evaluation` | ⬜ |
 

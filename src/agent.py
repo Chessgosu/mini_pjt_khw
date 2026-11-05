@@ -15,7 +15,7 @@ import os
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Any, Callable, Mapping, Optional, Protocol
+from typing import Any, Callable, Literal, Mapping, Optional, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -171,18 +171,21 @@ class DescriptionRules(_Strict):
 
 
 class ChatConditions(_Strict):
-    """채팅 질문 → 조회 조건. 연도 없는 월은 코드가 연도를 정한다."""
-    in_scope: bool
+    """채팅 질문 → 조회 조건. 연도 없는 월은 코드가 연도를 정한다.
+    kind: schedule(등록일 조회) | business(업무 설명·기준일 질문) | out_of_scope | action(실행·외부 등록 요청) | data_change"""
+    kind: Literal["schedule", "business", "out_of_scope", "action", "data_change"]
     job_id: Optional[str] = None
+    job_name: Optional[str] = Field(default=None, description="JOB ID 없이 이름·업무로 가리킨 경우 그 표현")
     year: Optional[int] = Field(default=None, ge=2000, le=2100)
     month: Optional[int] = Field(default=None, ge=1, le=12)
     day: Optional[int] = Field(default=None, ge=1, le=31)
 
 
 class ChatAnswer(_Strict):
-    """채팅 답변과 인용한 날짜·JOB 목록 (코드가 만든 정답 목록과 정확히 같아야 함)."""
+    """채팅 답변과 인용 목록 (코드가 만든 정답 목록과 정확히 같아야 함). 근거로 답할 수 없으면 answerable=false."""
     answer: str
     citations: list[str]
+    answerable: bool = True
 
 
 SCHEMAS: dict[str, type[BaseModel]] = {
@@ -230,8 +233,23 @@ SYSTEM_PROMPTS: dict[str, str] = {
         "예: '매월 5일과 급여일 D+1 영업일에 수행'→['매월 5일', '급여일 D+1 영업일'], "
         "'매월 둘째주 월요일에 수행'→['2째 주 월요일']. "
         "evidence는 description에서 복사한다. " + EVIDENCE_NOTE),
-    "chat_conditions": "배치 등록 일정 질문에서 JOB ID, 연도, 월, 일을 뽑는다. 배치 등록 일정과 무관하면 in_scope=false.",
-    "chat_answer": "주어진 계산 결과 목록만 근거로 한국어 한두 문장으로 답하고, 인용한 항목을 citations에 그대로 넣는다.",
+    "chat_conditions": (
+        "배치 작업 등록 일정 서비스의 질문을 분류하고 조건을 뽑는다. 답은 쓰지 않는다. "
+        "kind: 특정 JOB이나 날짜의 등록일·수행일을 묻는 질문은 schedule, 업무 기준(응당일·마감일·입금반영 등 업무 설명 문서 내용이나 "
+        "기준일 날짜)을 묻는 질문은 business, 배치의 실제 수행 결과·날씨·일반 상식 등 등록 일정과 무관하면 out_of_scope, "
+        "배치 실행·외부 사이트 등록 같은 작업 요청은 action, 규칙·확정값·일정을 바꾸거나 확정하라는 요청은 data_change. "
+        "job_id는 질문에 적힌 JOB ID(예 B001) 그대로, ID 없이 업무·이름으로 가리키면 job_name에 그 표현. "
+        "연도·월·일은 질문에 명시된 것만 숫자로 넣고('이번 달'·'내년' 같은 상대 표현은 history·year_month 기준으로 계산), 없으면 null. "
+        "history_summary는 이전 대화 요약으로 생략된 JOB·달을 채우는 데만 쓴다."),
+    "chat_answer": (
+        "facts(코드가 계산한 결과)와 sections(업무 설명 원문)만 근거로 질문에 한국어 존댓말 한두 문장으로 답한다. "
+        "facts에 citation이 있으면 citations에 그 값을 빠짐없이 그대로 넣고, 문장에는 각 날짜를 YYYY-MM-DD로, JOB ID를 그대로 쓴다. "
+        "facts에 없는 날짜·JOB은 쓰지 않고, 날짜를 직접 계산해 만들지 않는다. "
+        "등록일과 수행일(run_date)이 다르면 '수행일 YYYY-MM-DD HH:MM 시작이라 전날 등록'처럼 이유를 짧게 덧붙인다. "
+        "facts의 rule·기준일(name, original)로 날짜가 정해진 이유를 한 구절로 설명해도 된다. "
+        "업무 규칙을 묻는 질문(언제 진행돼? 등)은 sections 원문 내용으로 말로 답하고 날짜 목록을 만들지 않는다. "
+        "sections를 근거로 쓰면 그 원문 문장을 citations에 글자 그대로 넣는다. "
+        "근거로 답할 수 없으면 answerable=false로 하고 추측하지 않는다."),
 }
 
 
@@ -389,6 +407,35 @@ def _traced_call(client: LlmClient, purpose: str, payload: Any) -> LlmResult:
 
 def tracing_enabled() -> bool:
     return (os.environ.get("LANGSMITH_TRACING") or "").strip().lower() == "true"
+
+
+def trace_span(name: str, run_type: str, fn: Callable, *args, **kwargs):
+    """LANGSMITH_TRACING=true면 fn 실행을 트레이스 구간으로 남긴다(입출력 마스킹). 꺼져 있으면 그냥 실행."""
+    if not tracing_enabled():
+        return fn(*args, **kwargs)
+    from langsmith import traceable
+    wrapped = traceable(run_type=run_type, name=name, process_inputs=lambda x: mask(_jsonable(x)),
+                        process_outputs=lambda x: mask(_jsonable(x)))(fn)
+    return wrapped(*args, **kwargs)
+
+
+def _jsonable(x: Any) -> Any:
+    if isinstance(x, (str, int, float, bool)) or x is None:
+        return x
+    if isinstance(x, Mapping):
+        return {str(k): _jsonable(v) for k, v in x.items()}
+    if isinstance(x, (list, tuple, set)):
+        return [_jsonable(v) for v in x]
+    if isinstance(x, BaseModel):
+        return x.model_dump()
+    return str(x)
+
+
+def ask(question: str, year_month: str) -> dict:
+    """채팅 진입점 (api_spec.md 형식): {"answer", "contexts": [{"doc_id","text"}], "trace": [{"step","input","output"}]}.
+    채팅 그래프는 src/chat.py에 있다 (retriever·store와의 순환 import를 피하려고 여기서는 불러 쓰기만 한다)."""
+    from src.chat import default_service
+    return default_service().ask(question, year_month)
 
 
 def make_client(settings: LlmSettings | None = None, backend: Backend | None = None) -> LlmClient:

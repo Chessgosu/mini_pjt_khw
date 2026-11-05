@@ -13,7 +13,7 @@ from src.store import ConfirmedStore, base_date_rule_source, business_match_sour
 from tests.helpers import sample_confirmed
 
 FAST = LlmSettings(model_id="m", has_credentials=True, timeout_seconds=0.3, max_retries=1)
-GOOD = {"in_scope": True, "job_id": "B001", "year": None, "month": 12, "day": None}
+GOOD = {"kind": "schedule", "job_id": "B001", "year": None, "month": 12, "day": None}
 
 
 def o_marks(result, ym: str = "2026-11") -> set[tuple[str, int]]:
@@ -79,7 +79,7 @@ def test_retry_then_success(fake_llm) -> None:
     assert result.value.month == 12
 
 
-@pytest.mark.parametrize("bad", [{"in_scope": True, "month": 13}, {"in_scope": True, "extra": 1}, "문장", None,
+@pytest.mark.parametrize("bad", [{"kind": "schedule", "month": 13}, {"kind": "schedule", "extra": 1}, "문장", None,
                                  {"job_id": "B001"}])
 def test_schema_mismatch_variants(fake_llm, bad) -> None:
     fake_llm.set("chat_conditions", bad)
