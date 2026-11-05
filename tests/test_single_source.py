@@ -18,7 +18,7 @@ def verified_marked_ok(data_dir: Path, day: int) -> set[str]:
 
 def chat_jobs(chat, question: str) -> set[str]:
     r = chat.ask(question, "2026-11")
-    return {c["doc_id"].split("#")[2] for c in r["contexts"] if c["doc_id"].startswith("schedule#")}, r["answer"]
+    return {c.split(" ")[1] for c in r["citations"]}, r["answer"]
 
 
 def test_25th_same_everywhere(data_dir: Path, fake_llm) -> None:
@@ -37,7 +37,7 @@ def test_b006_same_everywhere(data_dir: Path, fake_llm) -> None:
     matrix_days = [d + 1 for d, c in enumerate(row["cells"]) if c]
     verified_days = [d for d in range(1, 31) if "B006" in verified_marked_ok(data_dir, d)]
     r = chat.ask("B006은 11월에 언제 등록돼?", "2026-11")
-    chat_days = sorted(int(c["doc_id"].split("#")[1][-2:]) for c in r["contexts"] if c["doc_id"].startswith("schedule#"))
+    chat_days = sorted(int(c.split(" ")[0][-2:]) for c in r["citations"])
     assert matrix_days == verified_days == chat_days == [1, 29]
 
 

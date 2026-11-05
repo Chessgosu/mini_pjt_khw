@@ -21,7 +21,9 @@ def test_b001_in_december(data_dir: Path, fake_llm) -> None:
     r = make_chat(data_dir, fake_llm).ask("B001은 12월에 언제 등록돼?", SEL)
     assert "2026-12-06" in r["answer"] and "B001" in r["answer"]
     assert set(r) >= {"answer", "contexts", "trace"}
-    assert [c["doc_id"] for c in r["contexts"]] == ["schedule#2026-12-06#B001", "rule#registration"]
+    assert [c["doc_id"] for c in r["contexts"]] == ["schedule#2026-12#B001"]
+    assert r["citations"] == ["2026-12-06 B001"]
+    assert "2026-12-06" in r["contexts"][0]["text"] and "16:30" in r["contexts"][0]["text"]   # 등록일·근거·등록일 규칙이 한 문서에
     assert steps(r) == ["guard", "parse", "tool:get_registration_schedule", "compose", "verify"]
 
 
@@ -29,7 +31,7 @@ def test_jobs_on_25th(data_dir: Path, fake_llm) -> None:
     r = make_chat(data_dir, fake_llm).ask("25일에 등록되는 배치는 뭐야?", SEL)
     for job in ("B106", "B201", "D001", "E001"):
         assert job in r["answer"]
-    assert {c["doc_id"].split("#")[2] for c in r["contexts"] if c["doc_id"].startswith("schedule#")} == {"B106", "B201", "D001", "E001"}
+    assert {c.split(" ")[1] for c in r["citations"]} == {"B106", "B201", "D001", "E001"}
     assert "tool:find_jobs_by_date" in steps(r)
 
 
@@ -44,7 +46,7 @@ def test_more_schedule_answers(data_dir: Path, fake_llm, q: str, dates: list[str
 
 def test_next_month_runs_counted_on_30th(data_dir: Path, fake_llm) -> None:
     r = make_chat(data_dir, fake_llm).ask("11월 30일에 등록되는 배치는?", SEL)
-    assert {c["doc_id"].split("#")[2] for c in r["contexts"] if c["doc_id"].startswith("schedule#")} == {"A001", "B105", "B202", "D001", "E001"}
+    assert {c.split(" ")[1] for c in r["citations"]} == {"A001", "B105", "B202", "D001", "E001"}
 
 
 # ------------------------------------------------------------ 월 해석
@@ -96,7 +98,7 @@ def test_unconfirmed_job_excluded(data_dir: Path, fake_llm) -> None:
     chat = make_chat(data_dir, fake_llm)
     ConfirmedStore(data_dir).remove("run_rules", "B201")
     r = chat.ask("25일에 등록되는 배치는 뭐야?", SEL)
-    assert {c["doc_id"].split("#")[2] for c in r["contexts"] if c["doc_id"].startswith("schedule#")} == {"B106", "D001", "E001"}
+    assert {c.split(" ")[1] for c in r["citations"]} == {"B106", "D001", "E001"}
     assert "B201" not in r["answer"].split("(미확정")[0]
     assert "미확정 JOB 1개는 빼고 답했어요" in r["answer"]
     r = chat.ask("B201은 11월에 몇 번 등록돼?", SEL)

@@ -7,7 +7,8 @@
    business (코드 + 도구): retrieve_business_docs + 그 달 기준일 → 근거 목록. 검색 결과가 없으면 범위 밖.
 4. compose (AI → 코드 검증): 답변 문장 + 인용 목록. 인용이 정답 목록과 정확히 같고 날짜·JOB ID가 문장에 모두
    있어야 표시한다. 어긋나면 답을 버린다.
-반환 형식은 api_spec.md: {"answer", "contexts": [{"doc_id","text"}], "trace": [{"step","input","output"}]} (+ "codes").
+반환 형식은 api_spec.md: {"answer", "contexts": [{"doc_id","text"}], "trace": [{"step","input","output"}]}
+(+ "codes": 오류·경고 코드, "citations": 검증을 통과한 인용 목록). contexts는 도구 호출 한 번의 결과를 문서 하나로 묶는다.
 """
 from __future__ import annotations
 
@@ -91,6 +92,7 @@ class ChatState(TypedDict, total=False):
     sections: list             # 업무 설명 근거 (business)
     base_facts: list           # 그 달 기준일 (business)
     unconfirmed_note: Optional[str]   # 날짜 질문에서 빠진 미확정 JOB 안내 (코드가 붙임)
+    citations: list            # 검증을 통과한 인용 목록 (답을 버렸으면 빈 목록)
     answer: Optional[str]
     codes: Annotated[list, operator.add]
     contexts: Annotated[list, operator.add]
@@ -135,7 +137,7 @@ class ChatService:
         answer = state.get("answer") or UNANSWERABLE
         self.history.append((mask_text(question)[0][:200], answer[:200]))
         return {"answer": answer, "contexts": state.get("contexts", []), "trace": state.get("trace", []),
-                "codes": list(dict.fromkeys(state.get("codes", [])))}
+                "codes": list(dict.fromkeys(state.get("codes", []))), "citations": state.get("citations", [])}
 
     # ---------- 도구 (트레이스 구간)
 
@@ -273,9 +275,10 @@ class ChatService:
         else:
             return _done(UNANSWERABLE, "schedule", cond)
 
-        contexts = [{"doc_id": f"schedule#{f['citation'].replace(' ', '#')}", "text": fact_text(f)} for f in facts]
-        if facts:
-            contexts.append(REGISTRATION_RULE_DOC)                 # 등록일 규칙은 한 번만
+        # 도구 호출 한 번의 결과 = 근거 문서 하나 (JOB 질문: 그 달 등록일 전부, 날짜 질문: 그날 JOB 전부)
+        doc_id = f"schedule#{ym}#{job_id}" if job_id else f"schedule#{ym}-{day:02d}"
+        title = f"{job_id} {ym} 등록 일정" if job_id else f"{ym}-{day:02d} 등록 JOB"
+        contexts = [schedule_doc(doc_id, title, facts)] if facts else []
         if not facts:
             return {**_done(empty, "schedule", cond), "trace": tr}
         unconfirmed_note = None
@@ -333,7 +336,7 @@ class ChatService:
             answer += state["unconfirmed_note"]                    # 코드가 붙이는 안내 (AI 문장과 별개)
         if ok and state.get("sections"):
             answer += source_note(ans.citations, state["sections"])
-        return {"answer": answer, "trace": tr}
+        return {"answer": answer, "trace": tr, "citations": sorted(ans.citations) if ok else []}
 
 
 def job_lookup_message(res: dict) -> str:
@@ -351,8 +354,13 @@ def fact_text(f: dict) -> str:
             f"수행일 {f.get('run_date')} {f.get('start_time')} 시작" + (f". 근거: {basis}" if basis else ""))
 
 
-REGISTRATION_RULE_DOC = {"doc_id": "rule#registration",
-                         "text": "등록일 규칙: 시작 시각이 16:30~23:59이면 수행일 당일, 00:00~16:29이면 수행일 전날에 등록합니다."}
+REGISTRATION_RULE = "등록일 규칙: 시작 시각이 16:30~23:59이면 수행일 당일, 00:00~16:29이면 수행일 전날에 등록합니다."
+
+
+def schedule_doc(doc_id: str, title: str, facts: list[dict]) -> dict:
+    """도구 결과 한 번을 근거 문서 하나로: 제목 + 사실 줄들 + 등록일 규칙."""
+    lines = [f"{title} ({len(facts)}건)"] + [f"- {fact_text(f)}" for f in facts] + [REGISTRATION_RULE]
+    return {"doc_id": doc_id, "text": "\n".join(lines)}
 
 
 def source_note(citations: list[str], sections: list[dict]) -> str:

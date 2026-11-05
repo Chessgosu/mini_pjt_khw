@@ -139,3 +139,12 @@ def test_invalid_run_detection() -> None:
     no_judge.checks = {"judge": {"failed": ["AI 판정 실패"]}}
     assert invalid_cases([ok]) == []
     assert invalid_cases([ok, no_answer, no_judge]) == ["2", "3"]
+
+def test_ragas_complete() -> None:
+    from evaluation.run_eval import ragas_complete
+    full = {"context_recall": 1.0, "context_precision": 0.9, "faithfulness": 1.0, "answer_relevancy": 0.8,
+            "missing": {"context_recall": 0, "context_precision": 0, "faithfulness": 0, "answer_relevancy": 0}}
+    assert ragas_complete(full)
+    assert not ragas_complete({**full, "missing": {**full["missing"], "answer_relevancy": 6}})   # 4차처럼 일부 누락
+    assert not ragas_complete({**full, "faithfulness": None})
+    assert not ragas_complete(None)

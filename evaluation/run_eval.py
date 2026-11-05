@@ -36,6 +36,7 @@ from src.chat import (  # noqa: E402
 
 CASES = ROOT / "evaluation" / "test_queries.csv"
 REFERENCES = ROOT / "evaluation" / "ragas_references.csv"     # RAGAS reference(모범 답안), 근거가 있는 케이스만
+METRICS = ("context_recall", "context_precision", "faithfulness", "answer_relevancy")
 SELECTED_MONTH = "2026-11"
 FIXED_ANSWERS = (OUT_OF_SCOPE, ACTION_REFUSED, DATA_CHANGE_REFUSED, PII_REFUSED, TOO_LONG, RATE_LIMITED_MSG)
 TARGET = {"pass": 18, "guardrail": 3, "faithfulness": 0.8}
@@ -131,6 +132,12 @@ def invalid_cases(results: list[CaseResult]) -> list[str]:
     return [r.id for r in results if r.answer == AI_FAILED or "AI 판정 실패" in r.checks.get("judge", {}).get("failed", [])]
 
 
+def ragas_complete(ragas: dict | None) -> bool:
+    """RAGAS 4개 지표가 모든 측정 대상에서 값이 나왔는지 (시간 초과로 빠진 값이 있으면 False)."""
+    return bool(ragas) and all(ragas.get(m) is not None for m in METRICS) \
+        and not any((ragas.get("missing") or {}).values())
+
+
 def summarize(results: list[CaseResult], ragas: dict | None) -> dict:
     by_cat: dict[str, list[int]] = {}
     for r in results:
@@ -224,12 +231,13 @@ def run_ragas(results: list[CaseResult], cases: list[dict], round_no: int | None
         model_id=os.environ.get("BEDROCK_EMBEDDING_MODEL_ID", "amazon.titan-embed-text-v2:0"), region_name=s.region))
     result = evaluate(EvaluationDataset.from_list(rows),
                       metrics=[context_recall, context_precision, faithfulness, answer_relevancy],
-                      llm=llm, embeddings=emb, run_config=RunConfig(max_workers=4, timeout=180), show_progress=False)
+                      llm=llm, embeddings=emb, run_config=RunConfig(max_workers=2, timeout=300), show_progress=False)
     df = result.to_pandas()
-    scores = {}
-    for m in ("context_recall", "context_precision", "faithfulness", "answer_relevancy"):
+    scores = {"missing": {}}
+    for m in METRICS:
         vals = [v for v in df[m].tolist() if v is not None and not (isinstance(v, float) and math.isnan(v))]
         scores[m] = round(sum(vals) / len(vals), 3) if vals else None
+        scores["missing"][m] = len(rows) - len(vals)
     scores["rows"] = len(rows)
     scores["reference_source"] = sorted({r["reference_source"] for r in full})
     scores["per_case"] = {r["user_input"]: {m: (None if math.isnan(v) else round(float(v), 3))
@@ -293,6 +301,8 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--round", type=int, default=2)
     ap.add_argument("--no-ragas", action="store_true")
     ap.add_argument("--notes", type=Path, help="보고서 '분석·개선' 절에 넣을 마크다운 파일")
+    ap.add_argument("--ragas-only", action="store_true",
+                    help="저장된 round{N}_results.json의 채팅 결과로 RAGAS만 다시 측정 (채팅 20건을 다시 돌리지 않음)")
     args = ap.parse_args(argv)
 
     client = make_client()
@@ -306,22 +316,36 @@ def main(argv: list[str]) -> int:
         print("일일 토큰 한도(ThrottlingException)라면 한도가 풀린 뒤 다시 실행하세요. 보고서는 만들지 않았습니다.")
         return 3
     cases = load_cases()
-    chat = ChatService(prepare_data(), client, embeddings=bedrock_embeddings())
-    results = run_cases(chat, client, cases)
-    if bad := invalid_cases(results):
-        print(f"\nBedrock 호출 실패로 판정할 수 없는 케이스가 있어 이번 회차는 무효예요: {', '.join(bad)}")
-        print("보고서는 만들지 않았습니다. 한도가 풀린 뒤 다시 실행하세요.")
-        return 3
+    raw = ROOT / "evaluation" / f"round{args.round}_results.json"
+
+    def save(summary: dict, results: list[CaseResult]) -> None:
+        raw.write_text(json.dumps({"summary": summary, "results": [asdict(r) for r in results]},
+                                  ensure_ascii=False, indent=2), encoding="utf-8")
+
+    if args.ragas_only:
+        if not raw.exists():
+            print(f"{raw.name}이 없어요. 먼저 --ragas-only 없이 실행하세요.")
+            return 2
+        results = [CaseResult(**r) for r in json.loads(raw.read_text(encoding="utf-8"))["results"]]
+        print(f"{raw.name}의 채팅 결과 {len(results)}건으로 RAGAS만 다시 측정해요.")
+    else:
+        chat = ChatService(prepare_data(), client, embeddings=bedrock_embeddings())
+        results = run_cases(chat, client, cases)
+        if bad := invalid_cases(results):
+            print(f"\nBedrock 호출 실패로 판정할 수 없는 케이스가 있어 이번 회차는 무효예요: {', '.join(bad)}")
+            print("보고서는 만들지 않았습니다. 한도가 풀린 뒤 다시 실행하세요.")
+            return 3
+        save(summarize(results, None), results)              # 채팅 결과는 먼저 저장 (RAGAS만 다시 잴 수 있게)
     ragas = None if args.no_ragas else run_ragas(results, cases, args.round)
-    if ragas is not None and ragas.get("faithfulness") is None:
-        print("\nRAGAS 측정이 모두 실패해(시간 초과·호출 실패) 이번 회차는 무효예요. 보고서는 만들지 않았습니다.")
+    if ragas is not None and not ragas_complete(ragas):
+        save(summarize(results, ragas), results)
+        print(f"\nRAGAS 측정값 일부가 빠졌어요(시간 초과·호출 실패): {ragas.get('missing')}. 보고서는 만들지 않았습니다.")
+        print(f"채팅 결과는 {raw.name}에 저장했어요. 한도가 넉넉할 때 --round {args.round} --ragas-only로 RAGAS만 다시 재세요.")
         return 3
     summary = summarize(results, ragas)
     notes = args.notes.read_text(encoding="utf-8") if args.notes else ""
     report = write_report(args.round, results, summary, notes)
-    raw = ROOT / "evaluation" / f"round{args.round}_results.json"
-    raw.write_text(json.dumps({"summary": summary, "results": [asdict(r) for r in results]}, ensure_ascii=False,
-                              indent=2), encoding="utf-8")
+    save(summary, results)
     print(f"\n통과 {summary['passed']}/{summary['total']}, 분류별 {summary['by_category']}, RAGAS {ragas and {k: v for k, v in ragas.items() if k != 'per_case'}}")
     print(f"보고서: {report}")
     return 0 if summary["criteria_met"] or (args.no_ragas and summary["passed"] >= TARGET["pass"]) else 1
