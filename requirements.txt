@@ -1,0 +1,29 @@
+# 월 배치 등록 일정 확인·검증 에이전트
+
+# 공통·설정
+boto3
+python-dotenv
+
+# 화면·파일
+streamlit
+openpyxl
+
+# LLM·에이전트 (Claude on AWS Bedrock)
+langchain
+langchain-aws
+langchain-community
+langgraph
+
+# RAG (하이브리드 검색: BM25 + 벡터)
+langchain-chroma
+rank-bm25
+kiwipiepy
+
+# Observability (LangSmith 트레이스, 환경변수로 활성화)
+langsmith
+
+# 평가
+ragas
+
+# 테스트
+pytest

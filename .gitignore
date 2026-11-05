@@ -1,0 +1,24 @@
+# 비밀 정보 (AWS 자격 증명, LangSmith 키)
+.env
+
+# 실행 중에 생기는 파일 (사용자 확정값, 대기 제안, 임시 저장 파일)
+data/confirmed.json
+data/pending.json
+data/*.tmp
+
+# 파이썬·테스트 부산물
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+
+# RAG 벡터 저장소
+chroma/
+.chroma/
+
+# OS·편집기
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

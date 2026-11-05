@@ -1,0 +1,89 @@
+goal: 내 PC에서 실행하는 웹 화면에서, MD 파일로 관리하는 배치 JOB별 수행일 규칙·기준일 업무 설명(AI가 해석, 사용자 확인)·영업일
+  달력으로 수행일을 계산한 뒤 공통 등록일 규칙으로 작업 등록일을 역산해 월 단위 등록 일정을 보여 주고, BATCH_SCHEDULE_YYYYMM.xlsx
+  등록 내역을 가드레일 점검 후 누락·초과 기준으로 검증하며, JOB별 일정을 문장으로 질문하면 답해 주는 프로그램을 만든다. 실제 수행 여부는
+  다루지 않는다.
+task_type: code
+brownfield_context:
+  project_type: greenfield
+  context_references: []
+  existing_patterns: []
+  existing_dependencies: []
+constraints:
+- 단일 사용자, 내 PC에서 로컬 실행(로그인·사내망 공개 불필요).
+- 프로그램은 배치를 스케줄링·실행하지 않고 외부 사이트에 등록하지 않는다.
+- 실제 수행 여부/수행 결과는 다루지 않는다(별도 관리).
+- 스케줄링은 일 단위이며 시각은 다루지 않는다.
+- 모든 배치 JOB의 수행일 규칙은 한 개의 MD 파일(batch-schedule.md)에 둔다.
+- 기준일 정의는 별도 MD 파일에 자유 서술로 둔다.
+- 영업일 달력은 사용자가 직접 입력하는 별도 MD 파일(business-calendar.md)에서 읽는다.
+- 등록일·수행일 관계는 전체 공통 규칙 하나를 별도 파일에서 읽어 적용한다.
+- AI 연결부는 교체 가능한 구조로 만든다.
+- batch-schedule.md는 수행일 기준으로 적혀 있으며 등록일은 역산한다.
+- AI는 기준일 날짜 판단(및 문법 외 등록일 규칙 해석)과 채팅 응답 문장화만 담당하고, D±N 계산은 프로그램이 결정적으로 수행한다.
+- 규칙 파일 형식은 표 기반 MD로 제안하되 구현 시 확정한다.
+acceptance_criteria:
+- description: 로컬에서 웹 서버를 실행하고 브라우저(localhost)로 접속하면, 대상 연월을 선택해 모든 JOB의 해당 월 작업 등록일을
+    달력 매트릭스(행=JOB ID, 열=1일~말일)로 볼 수 있다.
+  semantic_ac_key: ac_9cb19e2d0b58094c
+- description: '수행일 규칙 문법이 정확히 계산된다: 기준일 D=일요일 20일, 21일(월)·22일(화)·18일(금)이 영업일일 때 ''D+1일''=21일,
+    ''D영업일''=21일, ''D+1 영업일''=22일, ''D일 + 1영업일''=21일, ''영업일 D일 + 1일''=22일, ''D-1 영업일''=18일이며,
+    빼기(-)도 대칭으로 동작하고, ''매월 N일''·''첫 영업일''·''마지막 영업일''·''N째 주 X요일''·''말일'' 규칙도 계산되며,
+    이를 확인하는 자동 테스트가 통과한다.'
+  semantic_ac_key: ac_5e66b692d79f4f62
+- description: 영업일은 주말과 business-calendar.md에 사용자가 입력한 한국 공휴일/휴무일을 제외한 날로 판정된다.
+  semantic_ac_key: ac_91b414dad8b26f25
+- description: '그 달에 없는 날짜(예: 2월의 ''매월 31일'')는 말일로 처리된다.'
+  semantic_ac_key: ac_007814e483b306d4
+- description: 수행일은 공통 등록일·수행일 규칙 파일을 읽어 등록일로 역산되며, 규칙이 정해진 문법이면 프로그램이 계산하고 문법으로 해석되지
+    않으면 AI가 해석한 결과를 사용자가 확인한 뒤 적용된다.
+  semantic_ac_key: ac_0ae3fa8935aecdbb
+- description: '역산한 등록일이 이전 달로 넘어가면 등록일이 속한 달에 포함된다: 11월을 검증할 때 12월 초 수행분(예: 12월 1일
+    수행, D-1 영업일 등록 → 11월 28일)이 11월 등록 일정에 나타난다.'
+  semantic_ac_key: ac_1209d08ed8167cec
+- description: 기준일 업무 설명 파일(자유 서술)을 AI(Claude API, 기본 모델 claude-opus-5-5, 교체 가능)가
+    읽어 대상 월과 다음 달의 기준일 날짜를 근거와 함께 제시하고, 사용자가 화면에서 확인(또는 수정)하면 저장되며, 같은 달 재계산 시 저장된
+    값을 재사용해 결과가 동일하다.
+  semantic_ac_key: ac_2f5be6923345d535
+- description: API 키가 설정되지 않으면 채팅과 AI 기준일 판단만 비활성화되고, 기준일은 화면에서 직접 입력할 수 있으며 일정 보기·검증은
+    정상 동작한다.
+  semantic_ac_key: ac_e403f8b772d249fa
+- description: BATCH_SCHEDULE_YYYYMM.xlsx(행=JOB ID, 열=1일~말일, 등록일에 'O')를 업로드하면 파일명에서
+    기준 연월을 판별해 검증한다.
+  semantic_ac_key: ac_9060ea628b5f83b5
+- description: '가드레일 중단 항목: 파일명이 BATCH_SCHEDULE_YYYYMM.xlsx 형식이 아님, 날짜 열 개수가 해당 월
+    일수와 불일치, 셀에 ''O''나 빈칸이 아닌 값이 있음, 규칙/기준일/달력 MD 파일 문법 오류, 검증 월 또는 다음 달의 영업일 달력 정보
+    없음 — 이 중 하나라도 발생하면 오류 내용을 화면에 보여 주고 스케줄링 검증을 진행하지 않는다.'
+  semantic_ac_key: ac_7cd5b6140f30ac11
+- description: '가드레일 경고 항목: 파일에만 있는 JOB, 규칙에만 있는 JOB은 경고로 표시하고 나머지 JOB에 대해 검증을 계속한다.'
+  semantic_ac_key: ac_820638c1b5a7ac30
+- description: 스케줄링 검증은 JOB별로 '누락'(계산상 등록일인데 O 없음)과 '초과'(O가 있는데 계산상 등록일 아님)를 판정하고,
+    결과를 달력 매트릭스에 색으로 구분해 표시한다.
+  semantic_ac_key: ac_6afa2c49d6a3859f
+- description: 채팅 창에 'JOB_PAYROLL은 12월에 언제 등록돼?', '25일에 등록되는 배치는 뭐야?' 같은 문장으로 질문하면
+    프로그램이 계산한 등록일 데이터만 근거로 문장 답변을 돌려준다(AI가 날짜를 직접 계산하지 않음).
+  semantic_ac_key: ac_125bb39ac60506f5
+ontology_schema:
+  name: SessionSettledContract
+  description: Requirements the session already settled, crystallized without an interview.
+    Every entry is verbatim host-supplied material — no LLM composed any part of this
+    Seed.
+  fields: []
+evaluation_principles:
+- name: settled_requirements
+  description: Evaluate only the session-settled requirements.
+  weight: 1.0
+exit_conditions:
+- name: settled_requirements_met
+  description: All session-settled requirements are satisfied.
+  criteria: Every listed acceptance criterion passes.
+metadata:
+  seed_id: seed_0fa5e872ed42
+  version: 1.0.0
+  created_at: '2026-11-04T04:48:38.918578Z'
+  ambiguity_score: 0.2
+  interview_id: session-context
+  parent_seed_id: null
+  generation_mode: normal
+  degraded: false
+  unresolved_slots: []
+  recovery_reason: null
