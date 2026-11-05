@@ -94,7 +94,8 @@ mini-pjt_KHW/
 │   ├── chat.py         # 채팅 그래프: 코드 가드레일 → 조건 추출(AI) → 도구 호출 → 답변(AI) → 정답 목록 대조
 │   ├── tools.py        # 도메인 도구 (계산 엔진, 일정 조회, xlsx 가드레일·판정을 에이전트 도구로 노출)
 │   ├── retriever.py    # RAG 파이프라인 (business-explanation.md 하이브리드 검색)
-│   └── app.py          # Streamlit 화면
+│   ├── views.py        # 화면용 순수 함수 (load_state 단일 계산 출처, 매트릭스·판정 표)
+│   └── app.py          # Streamlit 화면 (등록 일정·기준일·규칙 확인·검증·채팅)
 ├── data/               # 입력 MD 3개, confirmed.json
 ├── evaluation/
 │   ├── test_queries.csv   # 인-아웃 세트 (test_query_schema.md 준수, 20건)

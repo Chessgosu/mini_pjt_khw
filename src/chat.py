@@ -90,6 +90,7 @@ class ChatState(TypedDict, total=False):
     expected: list             # 정답 인용 목록 (schedule)
     sections: list             # 업무 설명 근거 (business)
     base_facts: list           # 그 달 기준일 (business)
+    unconfirmed_note: Optional[str]   # 날짜 질문에서 빠진 미확정 JOB 안내 (코드가 붙임)
     answer: Optional[str]
     codes: Annotated[list, operator.add]
     contexts: Annotated[list, operator.add]
@@ -280,6 +281,10 @@ class ChatService:
                 return {**self._blocked_answer(ym, res, "schedule"), "trace": tr}
             facts = [{"citation": f"{d} {j['job_id']}", "registration_date": d, **j} for j in res["jobs"]]
             empty = f"{d}에 등록되는 JOB은 없어요."
+            if res.get("unconfirmed_jobs"):
+                note = f" (미확정 JOB {len(res['unconfirmed_jobs'])}개는 빼고 답했어요. 기준일·규칙 확인 화면에서 확정해 주세요.)"
+                empty += note
+                tr = tr + _t("note", "unconfirmed", res["unconfirmed_jobs"])
         else:
             return _done(UNANSWERABLE, "schedule", cond)
 
@@ -287,7 +292,12 @@ class ChatService:
                      "text": json.dumps(f, ensure_ascii=False)} for f in facts]
         if not facts:
             return {**_done(empty, "schedule", cond), "trace": tr}
-        return {"target_ym": ym, "facts": facts, "expected": sorted(f["citation"] for f in facts),
+        unconfirmed_note = None
+        if not job_id and res.get("unconfirmed_jobs"):
+            unconfirmed_note = (f" (미확정 JOB {len(res['unconfirmed_jobs'])}개는 빼고 답했어요. "
+                                "기준일·규칙 확인 화면에서 확정해 주세요.)")
+        return {"unconfirmed_note": unconfirmed_note, "target_ym": ym, "facts": facts,
+                "expected": sorted(f["citation"] for f in facts),
                 "sections": [], "base_facts": [], "contexts": contexts, "route": "compose", "trace": tr}
 
     # ---------- business
@@ -332,7 +342,10 @@ class ChatService:
         else:
             ok, why = check_business_answer(ans.answer, ans.citations, state["sections"], state["base_facts"])
         tr = _t("compose", payload, ans.model_dump()) + _t("verify", ans.citations, "일치" if ok else why)
-        return {"answer": ans.answer if ok else ANSWER_REJECTED, "trace": tr}
+        answer = ans.answer if ok else ANSWER_REJECTED
+        if ok and state.get("unconfirmed_note"):
+            answer += state["unconfirmed_note"]                    # 코드가 붙이는 안내 (AI 문장과 별개)
+        return {"answer": answer, "trace": tr}
 
 
 # ================================================================ 답변 검증 (코드)

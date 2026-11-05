@@ -97,7 +97,8 @@ def test_unconfirmed_job_excluded(data_dir: Path, fake_llm) -> None:
     ConfirmedStore(data_dir).remove("run_rules", "B201")
     r = chat.ask("25일에 등록되는 배치는 뭐야?", SEL)
     assert {c["doc_id"].split("#")[2] for c in r["contexts"]} == {"B106", "D001", "E001"}
-    assert "B201" not in r["answer"]
+    assert "B201" not in r["answer"].split("(미확정")[0]
+    assert "미확정 JOB 1개는 빼고 답했어요" in r["answer"]
     r = chat.ask("B201은 11월에 몇 번 등록돼?", SEL)
     assert "확정되지 않은" in r["answer"] and "JOB_RULE_UNCONFIRMED" in r["codes"]
 
